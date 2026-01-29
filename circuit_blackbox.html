@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Circuit Simulator - Auto Connect</title>
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --zone-bg: #ffffff;
+            --border-color: #cbd5e1;
+            --primary-color: #3b82f6;
+            --text-color: #1e293b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* Header */
+        header {
+            background-color: #1e293b;
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            z-index: 20;
+            flex-shrink: 0;
+        }
+
+        h1 { margin: 0; font-size: 1.2rem; }
+        .subtitle { font-size: 0.8rem; color: #94a3b8; }
+
+        /* Layout */
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background-color: white;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            z-index: 15;
+            overflow-y: auto;
+        }
+
+        .description-panel {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: #f1f5f9;
+        }
+        .desc-title { font-weight: bold; margin-bottom: 8px; font-size: 0.95rem; }
+        .desc-text { font-size: 0.85rem; line-height: 1.4; color: #475569; }
+        .desc-list { margin: 5px 0 0 15px; padding: 0; font-size: 0.85rem; color: #475569; }
+
+        .toolbox {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .tool-item {
+            width: 100%;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            padding-left: 20px;
+            cursor: grab;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: white;
+            transition: background 0.2s, transform 0.1s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        .tool-item:hover { background-color: #f8fafc; border-color: #94a3b8; }
+        .tool-item:active { cursor: grabbing; transform: scale(0.98); }
+        .tool-label { font-size: 14px; margin-left: 15px; color: #334155; font-weight: 500; }
+
+        .palette-svg { width: 60px; height: 30px; display: block; overflow: visible; }
+        
+        /* Main Workspace */
+        .workspace {
+            flex: 1;
+            display: flex;
+            padding: 10px;
+            gap: 10px;
+            background-color: #e2e8f0;
+            position: relative;
+        }
+
+        @media (max-width: 768px) {
+            .workspace { flex-direction: column; }
+            .sidebar { width: 70px; }
+            .description-panel { display: none; }
+            .tool-label { display: none; }
+            .tool-item { justify-content: center; padding: 0; }
+        }
+
+        .zone-container {
+            flex: 1;
+            background-color: var(--zone-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        .zone-header {
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: #f8fafc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            font-size: 0.9rem;
+            color: #475569;
+            z-index: 5;
+        }
+
+        .reset-btn {
+            background: white;
+            border: 1px solid #ef4444;
+            color: #ef4444;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .reset-btn:hover { background: #ef4444; color: white; }
+
+        .zone-area {
+            flex: 1;
+            position: relative;
+            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px; 
+            overflow: hidden;
+            transform-style: preserve-3d; 
+        }
+
+        .black-box-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 340px; 
+            height: 220px;
+            border: 2px dashed #94a3b8;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; 
+            z-index: 0;
+            background-color: rgba(241, 245, 249, 0.5);
+        }
+
+        .black-box-label {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Component Container */
+        .component {
+            position: absolute;
+            height: 40px; 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transform-origin: center center;
+            pointer-events: none; 
+        }
+
+        .comp-body {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            cursor: grab;
+            pointer-events: auto;
+        }
+        .comp-body:active { cursor: grabbing; }
+
+        /* Terminals / Handles */
+        .handle {
+            position: absolute;
+            width: 12px;   
+            height: 12px;  
+            background-color: transparent;
+            border-radius: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            cursor: crosshair;
+            z-index: 20;
+            pointer-events: auto;
+        }
+        /* Visual part of handle */
+        .handle::after {
+            content: '';
+            position: absolute;
+            top: 2px; left: 2px; width: 8px; height: 8px;
+            background-color: #fff;
+            border: 2px solid #3b82f6;
+            border-radius: 50%;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        
+        .handle:hover::after { background-color: #3b82f6; transform: scale(1.2); }
+        .h-start { left: 0; }
+        .h-end { left: 100%; }
+
+        /* Connection Dot (Visual Feedback) */
+        .connection-dot {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #0f172a;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+            pointer-events: none;
+            box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
+        }
+
+        /* Snap Indicator (Ghost Ring) */
+        .snap-indicator {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #22c55e;
+            background-color: rgba(34, 197, 94, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 50;
+            pointer-events: none;
+            display: none;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.7; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        /* SVG Styles */
+        .comp-svg {
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            pointer-events: none; 
+        }
+        
+        .circuit-line { stroke: #0f172a; stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .bulb-circle { fill: white; stroke: #0f172a; stroke-width: 2; }
+        .bulb-filament { stroke: #0f172a; stroke-width: 2; fill: none; }
+        .battery-pos { stroke: #0f172a; stroke-width: 3; } 
+        .battery-neg { stroke: #0f172a; stroke-width: 3; } 
+        
+        .glow-circle { fill: #facc15; opacity: 0; transition: opacity 0.2s; filter: blur(8px); }
+        .light-ray { stroke: #facc15; stroke-width: 2; stroke-linecap: round; opacity: 0; transition: opacity 0.2s; }
+
+        .warning {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background-color: #fee2e2;
+            color: #b91c1c;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            border: 1px solid #fca5a5;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            z-index: 30;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>
+        <h1>Circuit Lab</h1>
+        <div class="subtitle">Drop wires anywhere to connect.</div>
+    </div>
+</header>
+
+<div class="container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="description-panel">
+            <div class="desc-title">Instructions</div>
+            <div class="desc-text">
+                <ul class="desc-list">
+                    <li><strong>Connect:</strong> Drop a wire end onto another wire to create a junction.</li>
+                    <li><strong>Green Ring:</strong> Shows where it will connect.</li>
+                    <li><strong>Black Dot:</strong> Confirms a solid connection.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="toolbox">
+            <div class="tool-item" ontouchstart="startDragNew(event, 'BATTERY')" onmousedown="startDragNew(event, 'BATTERY')">
+                <svg class="palette-svg" viewBox="0 0 80 40">
+                    <line x1="0" y1="20" x2="35" y2="20" stroke="black" stroke-width="2" />
+                    <line x1="45" y1="20" x2="80" y2="20" stroke="black" stroke-width="2" />
+                    <line x1="35" y1="10" x2="35" y2="30" stroke="black" stroke-width="2" /> 
+                    <line x1="45" y1="14" x2="45" y2="26" stroke="black" stroke-width="4" /> 
+                </svg>
+                <span class="tool-label">Battery (9V)</span>
+            </div>
+
+            <div class="tool-item" ontouchstart="startDragNew(event, 'BULB')" onmousedown="startDragNew(event, 'BULB')">
+                <svg class="palette-svg" viewBox="0 0 80 40">
+                    <line x1="0" y1="20" x2="25" y2="20" stroke="black" stroke-width="2" />
+                    <line x1="55" y1="20" x2="80" y2="20" stroke="black" stroke-width="2" />
+                    <circle cx="40" cy="20" r="12" stroke="black" stroke-width="2" fill="none" />
+                    <path d="M 28 20 Q 40 5 52 20" stroke="black" stroke-width="2" fill="none" />
+                </svg>
+                <span class="tool-label">Light Bulb</span>
+            </div>
+
+            <div class="tool-item" ontouchstart="startDragNew(event, 'WIRE')" onmousedown="startDragNew(event, 'WIRE')">
+                <svg class="palette-svg" viewBox="0 0 80 40">
+                    <line x1="0" y1="20" x2="80" y2="20" stroke="black" stroke-width="2" />
+                </svg>
+                <span class="tool-label">Wire</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Workspace -->
+    <main class="workspace">
+        <!-- Zone 1 -->
+        <div class="zone-container">
+            <div class="zone-header">
+                <span>Zone A</span>
+                <button class="reset-btn" onclick="resetZone(1)">Clear Zone</button>
+            </div>
+            <div class="zone-area" id="zone1">
+                <div class="black-box-overlay">
+                    <span class="black-box-label">Black Box</span>
+                </div>
+                <div id="dots-zone1"></div> 
+                <div id="snap-zone1" class="snap-indicator"></div>
+                <div id="warning-zone1" class="warning">⚠️ Short Circuit!</div>
+            </div>
+        </div>
+
+        <!-- Zone 2 -->
+        <div class="zone-container">
+            <div class="zone-header">
+                <span>Zone B</span>
+                <button class="reset-btn" onclick="resetZone(2)">Clear Zone</button>
+            </div>
+            <div class="zone-area" id="zone2">
+                <div class="black-box-overlay">
+                    <span class="black-box-label">Black Box</span>
+                </div>
+                <div id="dots-zone2"></div>
+                <div id="snap-zone2" class="snap-indicator"></div>
+                <div id="warning-zone2" class="warning">⚠️ Short Circuit!</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+    // --- Constants ---
+    const SNAP_DIST = 30; // Increased for easier connection
+    const NODE_MERGE_DIST = 15; 
+    const DEFAULT_LENGTH = 100;
+
+    // --- State ---
+    let components = []; 
+    let dragInfo = null;
+    let idCounter = 0;
+
+    // --- Drag & Drop Logic ---
+
+    function getPointerPos(e) {
+        if (e.touches) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
+    function startDragNew(e, type) {
+        e.preventDefault(); 
+        const pos = getPointerPos(e);
+        
+        const ghost = document.createElement('div');
+        ghost.className = 'component';
+        ghost.style.width = DEFAULT_LENGTH + 'px';
+        ghost.style.pointerEvents = 'none';
+        ghost.style.opacity = '0.7';
+        ghost.style.border = '1px dashed #333';
+        ghost.style.left = (pos.x - DEFAULT_LENGTH/2) + 'px';
+        ghost.style.top = (pos.y - 20) + 'px';
+        
+        document.body.appendChild(ghost);
+
+        dragInfo = {
+            mode: 'NEW',
+            type: type,
+            element: ghost,
+            offsetX: DEFAULT_LENGTH/2,
+            offsetY: 20
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchend', onEnd);
+    }
+
+    function startDragExisting(e, id, handleType) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const comp = components.find(c => c.id === id);
+        if(!comp) return;
+
+        const pos = getPointerPos(e);
+        const zone = document.getElementById('zone' + comp.zoneId);
+        const zoneRect = zone.getBoundingClientRect();
+
+        let startX, startY;
+        
+        if (handleType === 'BODY') {
+            startX = pos.x - (zoneRect.left + comp.x1);
+            startY = pos.y - (zoneRect.top + comp.y1);
+        } else {
+            startX = 0; startY = 0;
+        }
+
+        dragInfo = {
+            mode: handleType, 
+            id: id,
+            comp: comp,
+            zoneRect: zoneRect,
+            startPointerX: pos.x,
+            startPointerY: pos.y,
+            initialX1: comp.x1,
+            initialY1: comp.y1,
+            initialX2: comp.x2,
+            initialY2: comp.y2
+        };
+
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('touchend', onEnd);
+    }
+
+    function onMove(e) {
+        if (!dragInfo) return;
+        e.preventDefault();
+        const pos = getPointerPos(e);
+
+        // Hide snap indicators initially
+        document.getElementById('snap-zone1').style.display = 'none';
+        document.getElementById('snap-zone2').style.display = 'none';
+
+        if (dragInfo.mode === 'NEW') {
+            dragInfo.element.style.left = (pos.x - dragInfo.offsetX) + 'px';
+            dragInfo.element.style.top = (pos.y - dragInfo.offsetY) + 'px';
+        } 
+        else {
+            const dx = pos.x - dragInfo.startPointerX;
+            const dy = pos.y - dragInfo.startPointerY;
+            const c = dragInfo.comp;
+
+            if (dragInfo.mode === 'BODY') {
+                c.x1 = dragInfo.initialX1 + dx;
+                c.y1 = dragInfo.initialY1 + dy;
+                c.x2 = dragInfo.initialX2 + dx;
+                c.y2 = dragInfo.initialY2 + dy;
+                
+                // Check snaps for both ends to show indicators
+                const s1 = findSnap(c.x1, c.y1, c.zoneId, c.id);
+                const s2 = findSnap(c.x2, c.y2, c.zoneId, c.id);
+                if(s1) showSnapIndicator(c.zoneId, s1.x, s1.y);
+                else if(s2) showSnapIndicator(c.zoneId, s2.x, s2.y);
+
+            } else if (dragInfo.mode === 'START') {
+                c.x1 = dragInfo.initialX1 + dx;
+                c.y1 = dragInfo.initialY1 + dy;
+                const s = findSnap(c.x1, c.y1, c.zoneId, c.id);
+                if(s) showSnapIndicator(c.zoneId, s.x, s.y);
+
+            } else if (dragInfo.mode === 'END') {
+                c.x2 = dragInfo.initialX2 + dx;
+                c.y2 = dragInfo.initialY2 + dy;
+                const s = findSnap(c.x2, c.y2, c.zoneId, c.id);
+                if(s) showSnapIndicator(c.zoneId, s.x, s.y);
+            }
+            
+            updateComponentVisuals(c);
+        }
+    }
+
+    function showSnapIndicator(zoneId, x, y) {
+        const ind = document.getElementById('snap-zone' + zoneId);
+        ind.style.display = 'block';
+        ind.style.left = x + 'px';
+        ind.style.top = y + 'px';
+    }
+
+    function onEnd(e) {
+        if (!dragInfo) return;
+
+        // Hide indicators
+        document.getElementById('snap-zone1').style.display = 'none';
+        document.getElementById('snap-zone2').style.display = 'none';
+
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('mouseup', onEnd);
+        document.removeEventListener('touchend', onEnd);
+
+        if (dragInfo.mode === 'NEW') {
+            const rect = dragInfo.element.getBoundingClientRect();
+            const centerX = rect.left + rect.width/2;
+            const centerY = rect.top + rect.height/2;
+
+            const z1 = document.getElementById('zone1').getBoundingClientRect();
+            const z2 = document.getElementById('zone2').getBoundingClientRect();
+
+            let zoneId = null;
+            let zoneRect = null;
+
+            if (centerX >= z1.left && centerX <= z1.right && centerY >= z1.top && centerY <= z1.bottom) {
+                zoneId = 1; zoneRect = z1;
+            } else if (centerX >= z2.left && centerX <= z2.right && centerY >= z2.top && centerY <= z2.bottom) {
+                zoneId = 2; zoneRect = z2;
+            }
+
+            dragInfo.element.remove();
+
+            if (zoneId) {
+                const relCX = centerX - zoneRect.left;
+                const relCY = centerY - zoneRect.top;
+                
+                const x1 = relCX - DEFAULT_LENGTH/2;
+                const x2 = relCX + DEFAULT_LENGTH/2;
+                const y1 = relCY;
+                const y2 = relCY;
+
+                if (checkLimits(zoneId, dragInfo.type)) {
+                    createComponent(dragInfo.type, x1, y1, x2, y2, zoneId);
+                }
+            }
+        } else {
+            // Snap Logic
+            const c = dragInfo.comp;
+            
+            // Handle Start Point Snap
+            if (dragInfo.mode === 'START' || dragInfo.mode === 'BODY') {
+                const snap = findSnap(c.x1, c.y1, c.zoneId, c.id);
+                if (snap) { 
+                    c.x1 = snap.x; 
+                    c.y1 = snap.y;
+                    if (snap.type === 'EDGE') splitWire(snap.targetComp, snap.x, snap.y);
+                }
+            }
+            
+            // Handle End Point Snap
+            if (dragInfo.mode === 'END' || dragInfo.mode === 'BODY') {
+                const snap = findSnap(c.x2, c.y2, c.zoneId, c.id);
+                if (snap) { 
+                    c.x2 = snap.x; 
+                    c.y2 = snap.y; 
+                    if (snap.type === 'EDGE') splitWire(snap.targetComp, snap.x, snap.y);
+                }
+            }
+
+            updateComponentVisuals(c);
+        }
+
+        dragInfo = null;
+        updateCircuit();
+    }
+
+    // --- Splitting Logic (T-Junctions) ---
+    function splitWire(targetComp, splitX, splitY) {
+        // Remove the old wire
+        targetComp.element.remove();
+        components = components.filter(c => c.id !== targetComp.id);
+
+        // Create two new wires
+        // Wire A: Start -> Split
+        createComponent('WIRE', targetComp.x1, targetComp.y1, splitX, splitY, targetComp.zoneId);
+        // Wire B: Split -> End
+        createComponent('WIRE', splitX, splitY, targetComp.x2, targetComp.y2, targetComp.zoneId);
+    }
+
+    // --- Snap Calculation ---
+    function findSnap(x, y, zoneId, selfId) {
+        const others = components.filter(c => c.zoneId === zoneId && c.id !== selfId);
+        
+        // 1. Priority: Snap to Endpoints (Nodes)
+        for (let o of others) {
+            if (dist(x, y, o.x1, o.y1) < SNAP_DIST) return { x: o.x1, y: o.y1, type: 'NODE' };
+            if (dist(x, y, o.x2, o.y2) < SNAP_DIST) return { x: o.x2, y: o.y2, type: 'NODE' };
+        }
+
+        // 2. Secondary: Snap to Wire Segments (Edges) - Only if dragging an endpoint, not body
+        // (To avoid complex double-split logic when dragging body)
+        if (dragInfo && (dragInfo.mode === 'START' || dragInfo.mode === 'END')) {
+            for (let o of others) {
+                if (o.type === 'WIRE') {
+                    const closest = getClosestPointOnSegment({x, y}, {x: o.x1, y: o.y1}, {x: o.x2, y: o.y2});
+                    if (closest.dist < SNAP_DIST) {
+                        // Avoid snapping to the very ends (already covered by node snap)
+                        // This prevents creating tiny 1px wires
+                        const d1 = dist(closest.x, closest.y, o.x1, o.y1);
+                        const d2 = dist(closest.x, closest.y, o.x2, o.y2);
+                        if (d1 > 10 && d2 > 10) {
+                            return { x: closest.x, y: closest.y, type: 'EDGE', targetComp: o };
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function getClosestPointOnSegment(p, a, b) {
+        const atob = { x: b.x - a.x, y: b.y - a.y };
+        const atop = { x: p.x - a.x, y: p.y - a.y };
+        const lenSq = atob.x * atob.x + atob.y * atob.y;
+        let dot = atop.x * atob.x + atop.y * atob.y;
+        let t = Math.min(1, Math.max(0, dot / lenSq));
+        
+        const closest = {
+            x: a.x + atob.x * t,
+            y: a.y + atob.y * t
+        };
+        
+        return {
+            x: closest.x,
+            y: closest.y,
+            dist: dist(p.x, p.y, closest.x, closest.y)
+        };
+    }
+
+    function dist(x1, y1, x2, y2) {
+        return Math.sqrt(Math.pow(x2-x1, 2) + Math.pow(y2-y1, 2));
+    }
+
+    function checkLimits(zoneId, type) {
+        const zoneComps = components.filter(c => c.zoneId === zoneId);
+        if (type === 'BATTERY') {
+            if (zoneComps.some(c => c.type === 'BATTERY')) {
+                alert("Only 1 Battery allowed per zone.");
+                return false;
+            }
+        }
+        if (type === 'BULB') {
+            if (zoneComps.filter(c => c.type === 'BULB').length >= 10) {
+                alert("Max 10 Bulbs allowed per zone.");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function createComponent(type, x1, y1, x2, y2, zoneId) {
+        const id = ++idCounter;
+        
+        const div = document.createElement('div');
+        div.className = 'component';
+        
+        const body = document.createElement('div');
+        body.className = 'comp-body';
+        body.addEventListener('mousedown', (e) => startDragExisting(e, id, 'BODY'));
+        body.addEventListener('touchstart', (e) => startDragExisting(e, id, 'BODY'));
+        div.appendChild(body);
+
+        const h1 = document.createElement('div'); h1.className = 'handle h-start';
+        h1.addEventListener('mousedown', (e) => startDragExisting(e, id, 'START'));
+        h1.addEventListener('touchstart', (e) => startDragExisting(e, id, 'START'));
+        
+        const h2 = document.createElement('div'); h2.className = 'handle h-end';
+        h2.addEventListener('mousedown', (e) => startDragExisting(e, id, 'END'));
+        h2.addEventListener('touchstart', (e) => startDragExisting(e, id, 'END'));
+
+        div.appendChild(h1);
+        div.appendChild(h2);
+
+        const svgContainer = document.createElement('div');
+        svgContainer.className = 'comp-svg-container';
+        svgContainer.style.width = '100%';
+        svgContainer.style.height = '100%';
+        svgContainer.style.pointerEvents = 'none';
+        div.appendChild(svgContainer);
+
+        document.getElementById('zone' + zoneId).appendChild(div);
+
+        const comp = { id, type, x1, y1, x2, y2, zoneId, element: div, svgContainer };
+        components.push(comp);
+        
+        updateComponentVisuals(comp);
+    }
+
+    function updateComponentVisuals(comp) {
+        const dx = comp.x2 - comp.x1;
+        const dy = comp.y2 - comp.y1;
+        const length = Math.sqrt(dx*dx + dy*dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        
+        const mx = (comp.x1 + comp.x2) / 2;
+        const my = (comp.y1 + comp.y2) / 2;
+
+        comp.element.style.width = length + 'px';
+        comp.element.style.left = (mx - length/2) + 'px';
+        comp.element.style.top = (my - 20) + 'px'; 
+        comp.element.style.transform = `rotate(${angle}deg)`;
+
+        comp.svgContainer.innerHTML = getSVG(comp.type, length, 0);
+    }
+
+    function resetZone(zoneId) {
+        const toRemove = components.filter(c => c.zoneId === zoneId);
+        toRemove.forEach(c => c.element.remove());
+        components = components.filter(c => c.zoneId !== zoneId);
+        updateCircuit();
+    }
+
+    function getSVG(type, width, brightness) {
+        const cx = width / 2;
+        const cy = 20;
+
+        let content = '';
+
+        if (type === 'WIRE') {
+            content = `<line x1="0" y1="20" x2="${width}" y2="20" class="circuit-line" />`;
+        } 
+        else if (type === 'BATTERY') {
+            const gap = 10;
+            const leftEnd = cx - gap/2;
+            const rightStart = cx + gap/2;
+            
+            content = `
+                <line x1="0" y1="20" x2="${leftEnd}" y2="20" class="circuit-line" />
+                <line x1="${rightStart}" y1="20" x2="${width}" y2="20" class="circuit-line" />
+                <line x1="${leftEnd}" y1="5" x2="${leftEnd}" y2="35" class="battery-pos" />
+                <line x1="${rightStart}" y1="12" x2="${rightStart}" y2="28" class="battery-neg" />
+                <text x="${leftEnd - 10}" y="10" font-size="12" font-family="sans-serif">+</text>
+            `;
+        } 
+        else if (type === 'BULB') {
+            const r = 14;
+            const leftEnd = cx - r;
+            const rightStart = cx + r;
+            
+            const opacity = Math.min(brightness, 1);
+            const glowR = 20 + (brightness * 20); 
+            
+            let rays = '';
+            if (brightness > 0.1) {
+                const numRays = 8 + Math.floor(brightness * 8);
+                const rayLen = 10 + (brightness * 15);
+                const inner = r + 4;
+                
+                for(let i=0; i<numRays; i++) {
+                    const ang = (i / numRays) * Math.PI * 2;
+                    const r1x = cx + Math.cos(ang) * inner;
+                    const r1y = cy + Math.sin(ang) * inner;
+                    const r2x = cx + Math.cos(ang) * (inner + rayLen);
+                    const r2y = cy + Math.sin(ang) * (inner + rayLen);
+                    rays += `<line x1="${r1x}" y1="${r1y}" x2="${r2x}" y2="${r2y}" class="light-ray" style="opacity: ${opacity}" />`;
+                }
+            }
+
+            content = `
+                <circle cx="${cx}" cy="${cy}" r="${glowR}" class="glow-circle" style="opacity: ${opacity * 0.8}" />
+                ${rays}
+                <line x1="0" y1="20" x2="${leftEnd}" y2="20" class="circuit-line" />
+                <line x1="${rightStart}" y1="20" x2="${width}" y2="20" class="circuit-line" />
+                <circle cx="${cx}" cy="${cy}" r="${r}" class="bulb-circle" fill="white" />
+                <path d="M ${cx-r+2} 20 Q ${cx} 0 ${cx+r-2} 20" class="bulb-filament" />
+            `;
+        }
+
+        return `<svg class="comp-svg" viewBox="0 0 ${width} 40" preserveAspectRatio="xMidYMid meet">${content}</svg>`;
+    }
+
+    // --- Physics Engine ---
+
+    function updateCircuit() {
+        solveZone(1);
+        solveZone(2);
+    }
+
+    function solveZone(zoneId) {
+        const zoneComps = components.filter(c => c.zoneId === zoneId);
+        const warningEl = document.getElementById('warning-zone' + zoneId);
+        const dotsContainer = document.getElementById('dots-zone' + zoneId);
+        
+        // Reset
+        warningEl.style.display = 'none';
+        dotsContainer.innerHTML = '';
+        zoneComps.forEach(c => {
+            if(c.type === 'BULB') {
+                const dx = c.x2 - c.x1;
+                const dy = c.y2 - c.y1;
+                const len = Math.sqrt(dx*dx + dy*dy);
+                c.svgContainer.innerHTML = getSVG('BULB', len, 0);
+            }
+        });
+
+        if (zoneComps.length === 0) return;
+
+        // 1. Identify Nodes
+        let nodes = []; 
+
+        function getNodeIndex(x, y) {
+            for(let i=0; i<nodes.length; i++) {
+                if (dist(nodes[i].x, nodes[i].y, x, y) < NODE_MERGE_DIST) {
+                    return i;
+                }
+            }
+            nodes.push({x, y});
+            return nodes.length - 1;
+        }
+
+        // Find Battery Negative first to set as Ground (Node 0)
+        const batt = zoneComps.find(c => c.type === 'BATTERY');
+        if (batt) {
+            getNodeIndex(batt.x2, batt.y2); // Node 0
+        }
+
+        // Build element list
+        let elements = [];
+        zoneComps.forEach(c => {
+            const n1 = getNodeIndex(c.x1, c.y1);
+            const n2 = getNodeIndex(c.x2, c.y2);
+
+            if (c.type === 'BATTERY') {
+                elements.push({ type: 'V', n1: n1, n2: n2, value: 9 });
+            } else if (c.type === 'BULB') {
+                elements.push({ type: 'R', n1: n1, n2: n2, value: 10, comp: c }); 
+            } else if (c.type === 'WIRE') {
+                elements.push({ type: 'R', n1: n1, n2: n2, value: 0.001 }); 
+            }
+        });
+
+        // Draw Connection Dots
+        nodes.forEach(n => {
+            let count = 0;
+            elements.forEach(el => {
+                if(el.n1 === nodes.indexOf(n) || el.n2 === nodes.indexOf(n)) count++;
+            });
+            if(count > 1) {
+                const dot = document.createElement('div');
+                dot.className = 'connection-dot';
+                dot.style.left = n.x + 'px';
+                dot.style.top = n.y + 'px';
+                dotsContainer.appendChild(dot);
+            }
+        });
+
+        if (!batt || nodes.length < 2) return;
+
+        // 2. Build Matrix (MNA)
+        const numNodes = nodes.length;
+        const numV = elements.filter(e => e.type === 'V').length;
+        const size = numNodes + numV;
+        
+        let G = Array(size).fill(0).map(() => Array(size).fill(0));
+        let I = Array(size).fill(0);
+
+        let vIndex = numNodes;
+
+        elements.forEach(el => {
+            const { n1, n2, type, value } = el;
+            
+            if (type === 'R') {
+                const g = 1/value;
+                G[n1][n1] += g;
+                G[n2][n2] += g;
+                G[n1][n2] -= g;
+                G[n2][n1] -= g;
+            } else if (type === 'V') {
+                G[n1][vIndex] += 1; 
+                G[n2][vIndex] -= 1; 
+                G[vIndex][n1] += 1;
+                G[vIndex][n2] -= 1;
+                I[vIndex] = value;
+                vIndex++;
+            }
+        });
+
+        // Ground Node 0
+        for(let i=0; i<size; i++) {
+            G[0][i] = 0;
+            G[i][0] = 0; 
+        }
+        G[0][0] = 1;
+        I[0] = 0;
+
+        // 3. Solve
+        const voltages = solveMatrix(G, I);
+        if (!voltages) return;
+
+        // 4. Apply Results
+        let totalCurrent = 0;
+
+        elements.forEach(el => {
+            if (el.type === 'R' && el.comp) {
+                const vDrop = Math.abs(voltages[el.n1] - voltages[el.n2]);
+                let b = (vDrop * vDrop) / 40; 
+                
+                const dx = el.comp.x2 - el.comp.x1;
+                const dy = el.comp.y2 - el.comp.y1;
+                const len = Math.sqrt(dx*dx + dy*dy);
+                
+                el.comp.svgContainer.innerHTML = getSVG('BULB', len, b);
+            }
+        });
+        
+        // Check Short Circuit
+        for(let i=numNodes; i<size; i++) {
+            totalCurrent += Math.abs(voltages[i]);
+        }
+        
+        if (totalCurrent > 200) {
+            warningEl.style.display = 'flex';
+        }
+    }
+
+    function solveMatrix(A, b) {
+        const n = A.length;
+        let M = A.map(row => [...row]);
+        let x = [...b];
+
+        for (let i = 0; i < n; i++) {
+            let maxEl = Math.abs(M[i][i]);
+            let maxRow = i;
+            for (let k = i + 1; k < n; k++) {
+                if (Math.abs(M[k][i]) > maxEl) {
+                    maxEl = Math.abs(M[k][i]);
+                    maxRow = k;
+                }
+            }
+
+            for (let k = i; k < n; k++) {
+                let tmp = M[maxRow][k];
+                M[maxRow][k] = M[i][k];
+                M[i][k] = tmp;
+            }
+            let tmp = x[maxRow];
+            x[maxRow] = x[i];
+            x[i] = tmp;
+
+            if (Math.abs(M[i][i]) < 1e-10) return null; 
+
+            for (let k = i + 1; k < n; k++) {
+                let c = -M[k][i] / M[i][i];
+                for (let j = i; j < n; j++) {
+                    if (i === j) M[k][j] = 0;
+                    else M[k][j] += c * M[i][j];
+                }
+                x[k] += c * x[i];
+            }
+        }
+
+        let res = new Array(n).fill(0);
+        for (let i = n - 1; i >= 0; i--) {
+            let sum = 0;
+            for (let j = i + 1; j < n; j++) {
+                sum += M[i][j] * res[j];
+            }
+            res[i] = (x[i] - sum) / M[i][i];
+        }
+        return res;
+    }
+
+</script>
+
+</body>
+</html>
