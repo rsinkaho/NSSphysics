@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase App Setup</title>
+</head>
+<body>
+    <h1>Firebase App Initialized</h1>
+    <p>Open the browser console (F12) to see the Firebase instance details.</p>
+
+    <script type="module">
+      // Import the functions you need from the SDKs you need
+      // Documentation: https://firebase.google.com/docs/web/setup#available-libraries
+      
+      // Core Firebase App
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+      
+      // Analytics
+      import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
+      
+      // Authentication (Added based on available libraries)
+      import { getAuth } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+      
+      // Cloud Firestore (Added based on available libraries)
+      import { getFirestore } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+      
+      // Realtime Database (Added based on available libraries)
+      import { getDatabase } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+
+      // Your web app's Firebase configuration
+      const firebaseConfig = {
+        apiKey: "AIzaSyAGj-0VFzGfD43JYIjScNAamxQzCp9pfog",
+        authDomain: "sciencelabsystem.firebaseapp.com",
+        projectId: "sciencelabsystem",
+        storageBucket: "sciencelabsystem.firebasestorage.app",
+        messagingSenderId: "585267705698",
+        appId: "1:585267705698:web:9db6f284c0231f066cde3b",
+        measurementId: "G-0BG1XX9SDF"
+      };
+
+      // Initialize Firebase
+      const app = initializeApp(firebaseConfig);
+      
+      // Initialize Services
+      const analytics = getAnalytics(app);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      const rtdb = getDatabase(app);
+
+      // Log to console to verify connection
+      console.log("Firebase App Initialized:", app);
+      console.log("Analytics Initialized:", analytics);
+      console.log("Auth Initialized:", auth);
+      console.log("Firestore Initialized:", db);
+    </script>
+</body>
+</html>
