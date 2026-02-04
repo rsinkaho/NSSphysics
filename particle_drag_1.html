@@ -3,56 +3,767 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firebase App Setup</title>
+    <title>Virtual Science Lab | Particle Model</title>
+    
+    <!-- Fonts & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+        // --- YOUR FIREBASE CONFIGURATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAGj-0VFzGfD43JYIjScNAamxQzCp9pfog",
+            authDomain: "sciencelabsystem.firebaseapp.com",
+            projectId: "sciencelabsystem",
+            storageBucket: "sciencelabsystem.firebasestorage.app",
+            messagingSenderId: "585267705698",
+            appId: "1:585267705698:web:9db6f284c0231f066cde3b",
+            measurementId: "G-0BG1XX9SDF"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const SUBMISSIONS_COLLECTION = "submissions";
+
+        // --- STUDENT SUBMISSION LOGIC ---
+        window.submitWork = async function() {
+            const name = document.getElementById('studentName').value;
+            if(!name) { alert("Please enter your name."); return; }
+            
+            const q1 = document.getElementById('q1').value;
+            const checkboxes = document.querySelectorAll('.checkbox-group input:checked');
+            let q2 = [];
+            checkboxes.forEach(cb => q2.push(cb.value));
+
+            // Capture Canvas
+            const canvas = document.getElementById('simCanvas');
+            const imageData = canvas.toDataURL('image/jpeg', 0.7); 
+
+            const submitBtn = document.getElementById('submitBtn');
+            const originalText = submitBtn.innerHTML;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
+
+            try {
+                await addDoc(collection(db, SUBMISSIONS_COLLECTION), {
+                    studentName: name,
+                    answerQ1: q1,
+                    answerQ2: q2,
+                    imageData: imageData,
+                    timestamp: serverTimestamp()
+                });
+                
+                // Show success modal or alert
+                alert("✅ Work Submitted Successfully!");
+                location.reload(); 
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                alert("Error submitting. Please check internet connection.");
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+            }
+        };
+
+        // --- TEACHER REAL-TIME LISTENER ---
+        let unsubscribeListener = null;
+
+        window.startRealTimeListener = function() {
+            const listContainer = document.getElementById('submission-list');
+            const statusIndicator = document.getElementById('live-status');
+            
+            listContainer.innerHTML = '<div class="loading-spinner"><i class="fas fa-circle-notch fa-spin"></i> Loading data...</div>';
+            
+            const q = query(collection(db, SUBMISSIONS_COLLECTION), orderBy("timestamp", "desc"));
+            
+            // onSnapshot provides REAL-TIME updates
+            unsubscribeListener = onSnapshot(q, (snapshot) => {
+                listContainer.innerHTML = ""; // Clear current list
+                
+                if (snapshot.empty) {
+                    listContainer.innerHTML = `
+                        <div class="empty-state">
+                            <i class="fas fa-folder-open"></i>
+                            <p>No submissions yet. Waiting for students...</p>
+                        </div>`;
+                    return;
+                }
+
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    const card = document.createElement('div');
+                    card.className = 'submission-card';
+                    
+                    // Format Date
+                    let timeStr = "Just now";
+                    if(data.timestamp) {
+                        const date = data.timestamp.toDate();
+                        timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    }
+
+                    card.innerHTML = `
+                        <div class="card-header">
+                            <div class="avatar">${data.studentName.charAt(0).toUpperCase()}</div>
+                            <div class="meta">
+                                <h3>${data.studentName}</h3>
+                                <span class="time"><i class="far fa-clock"></i> ${timeStr}</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <button class="view-btn" onclick="viewSubmission('${doc.id}')">
+                                <i class="fas fa-eye"></i> View Work
+                            </button>
+                        </div>
+                    `;
+                    
+                    // Cache data for the modal
+                    if(!window.submissionCache) window.submissionCache = {};
+                    window.submissionCache[doc.id] = data;
+                    
+                    listContainer.appendChild(card);
+                });
+                
+                // Update status text
+                statusIndicator.innerHTML = '<span class="pulse">●</span> Live Sync Active';
+            });
+        };
+
+        window.stopRealTimeListener = function() {
+            if(unsubscribeListener) unsubscribeListener();
+        }
+
+        window.clearAllData = async function() {
+            if(!confirm("⚠️ DANGER: This will permanently delete ALL student submissions from the database. This cannot be undone.\n\nAre you sure?")) return;
+            
+            const q = query(collection(db, SUBMISSIONS_COLLECTION));
+            
+            // We need to fetch once to get IDs to delete
+            // Note: In a real app, you'd use a Cloud Function for mass deletion, but client-side loop works for small classrooms.
+            import { getDocs } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+            
+            const querySnapshot = await getDocs(q);
+            const deletePromises = [];
+            querySnapshot.forEach((doc) => {
+                deletePromises.push(deleteDoc(doc.ref));
+            });
+
+            await Promise.all(deletePromises);
+            alert("All data has been wiped.");
+        };
+    </script>
+
+    <style>
+        :root {
+            --primary: #008080; /* Teal */
+            --primary-dark: #006666;
+            --secondary: #2c3e50; /* Navy */
+            --accent: #f39c12; /* Orange/Gold */
+            --bg: #f0f4f8;
+            --card-bg: #ffffff;
+            --text: #333;
+            --sidebar-width: 280px;
+        }
+        
+        * { box-sizing: border-box; }
+        body { font-family: 'Poppins', sans-serif; background: var(--bg); margin: 0; padding: 0; color: var(--text); }
+        
+        /* --- UTILITIES --- */
+        .hidden { display: none !important; }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-secondary { background: white; color: var(--secondary); border: 1px solid #ddd; }
+        .btn-danger { background: #e74c3c; color: white; }
+        
+        /* --- LANDING PAGE --- */
+        #landing-page {
+            height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white; text-align: center;
+        }
+        .hero-title { font-size: 3rem; margin-bottom: 10px; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .hero-subtitle { font-size: 1.2rem; opacity: 0.9; margin-bottom: 40px; }
+        .role-cards { display: flex; gap: 30px; flex-wrap: wrap; justify-content: center; }
+        .role-card {
+            background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2);
+            padding: 40px; border-radius: 16px; width: 260px; cursor: pointer; transition: all 0.3s;
+        }
+        .role-card:hover { background: white; color: var(--primary); transform: translateY(-5px); }
+        .role-card i { font-size: 3rem; margin-bottom: 20px; }
+        .role-card h3 { margin: 0; font-size: 1.5rem; }
+
+        /* --- STUDENT VIEW --- */
+        #student-view { padding: 20px; max-width: 1400px; margin: 0 auto; }
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .workspace { display: grid; grid-template-columns: 2fr 1fr; gap: 20px; height: calc(100vh - 100px); }
+        
+        .canvas-container {
+            background: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            position: relative; overflow: hidden; display: flex; flex-direction: column;
+        }
+        .canvas-header { padding: 15px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; background: #fafafa; }
+        #simCanvas { flex-grow: 1; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+        
+        .controls-panel {
+            background: white; border-radius: 12px; padding: 25px; box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            overflow-y: auto;
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { display: block; font-weight: 600; margin-bottom: 8px; color: var(--secondary); }
+        .form-control { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-family: inherit; transition: border 0.2s; }
+        .form-control:focus { border-color: var(--primary); outline: none; }
+        .checkbox-group label { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; cursor: pointer; }
+        
+        /* --- TEACHER DASHBOARD --- */
+        #teacher-login { height: 100vh; display: flex; align-items: center; justify-content: center; background: #eef2f5; }
+        .login-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); text-align: center; width: 100%; max-width: 400px; }
+        
+        #teacher-dashboard { padding: 30px; }
+        .dashboard-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .status-badge { background: #e6fffa; color: #00b894; padding: 5px 12px; border-radius: 20px; font-size: 0.9rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+        .pulse { animation: pulse 1.5s infinite; color: #00b894; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        .submissions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
+        .submission-card { background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); transition: transform 0.2s; border: 1px solid #eee; }
+        .submission-card:hover { transform: translateY(-3px); box-shadow: 0 8px 25px rgba(0,0,0,0.1); }
+        .card-header { padding: 20px; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid #f5f5f5; }
+        .avatar { width: 45px; height: 45px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.2rem; }
+        .meta h3 { margin: 0; font-size: 1.1rem; color: var(--secondary); }
+        .meta .time { font-size: 0.85rem; color: #888; }
+        .card-body { padding: 15px; background: #fafafa; text-align: center; }
+        .view-btn { width: 100%; background: white; border: 1px solid var(--primary); color: var(--primary); padding: 8px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+        .view-btn:hover { background: var(--primary); color: white; }
+        
+        .empty-state { grid-column: 1 / -1; text-align: center; padding: 50px; color: #aaa; }
+        .empty-state i { font-size: 3rem; margin-bottom: 15px; }
+
+        /* --- MODAL --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+        .modal-content { background: white; width: 90%; max-width: 1000px; max-height: 90vh; border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; animation: slideUp 0.3s ease; }
+        @keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        
+        .modal-header { padding: 20px; background: var(--secondary); color: white; display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 30px; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .modal-footer { padding: 20px; border-top: 1px solid #eee; text-align: right; background: #f9f9f9; }
+        
+        .answer-box { background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); margin-bottom: 15px; }
+        .answer-box h4 { margin: 0 0 10px 0; color: var(--secondary); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; }
+        .model-img { width: 100%; border-radius: 8px; border: 1px solid #ddd; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .workspace { grid-template-columns: 1fr; height: auto; }
+            .canvas-container { height: 500px; }
+            .modal-body { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
 <body>
-    <h1>Firebase App Initialized</h1>
-    <p>Open the browser console (F12) to see the Firebase instance details.</p>
 
-    <script type="module">
-      // Import the functions you need from the SDKs you need
-      // Documentation: https://firebase.google.com/docs/web/setup#available-libraries
-      
-      // Core Firebase App
-      import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-      
-      // Analytics
-      import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
-      
-      // Authentication (Added based on available libraries)
-      import { getAuth } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-      
-      // Cloud Firestore (Added based on available libraries)
-      import { getFirestore } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
-      
-      // Realtime Database (Added based on available libraries)
-      import { getDatabase } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+    <!-- 1. LANDING PAGE -->
+    <div id="landing-page">
+        <div class="hero-title"><i class="fas fa-atom"></i> Virtual Lab</div>
+        <div class="hero-subtitle">Particle Model Simulation System</div>
+        
+        <div class="role-cards">
+            <div class="role-card" onclick="showStudentView()">
+                <i class="fas fa-user-graduate"></i>
+                <h3>Student</h3>
+                <p>Create model & submit</p>
+            </div>
+            <div class="role-card" onclick="showTeacherLogin()">
+                <i class="fas fa-chalkboard-teacher"></i>
+                <h3>Teacher</h3>
+                <p>View live results</p>
+            </div>
+        </div>
+    </div>
 
-      // Your web app's Firebase configuration
-      const firebaseConfig = {
-        apiKey: "AIzaSyAGj-0VFzGfD43JYIjScNAamxQzCp9pfog",
-        authDomain: "sciencelabsystem.firebaseapp.com",
-        projectId: "sciencelabsystem",
-        storageBucket: "sciencelabsystem.firebasestorage.app",
-        messagingSenderId: "585267705698",
-        appId: "1:585267705698:web:9db6f284c0231f066cde3b",
-        measurementId: "G-0BG1XX9SDF"
-      };
+    <!-- 2. STUDENT VIEW -->
+    <div id="student-view" class="hidden">
+        <div class="nav-bar">
+            <button class="btn btn-secondary" onclick="goHome()"><i class="fas fa-arrow-left"></i> Exit Lab</button>
+            <h2 style="margin:0; color:var(--primary);">Particle Model Workspace</h2>
+            <div style="width:100px"></div> <!-- Spacer -->
+        </div>
 
-      // Initialize Firebase
-      const app = initializeApp(firebaseConfig);
-      
-      // Initialize Services
-      const analytics = getAnalytics(app);
-      const auth = getAuth(app);
-      const db = getFirestore(app);
-      const rtdb = getDatabase(app);
+        <div class="workspace">
+            <div class="canvas-container">
+                <div class="canvas-header">
+                    <span><strong>Task:</strong> Simulate mixing 50ml Water + 50ml Alcohol</span>
+                    <button class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8rem;" onclick="clearParticles()"><i class="fas fa-undo"></i> Reset</button>
+                </div>
+                <canvas id="simCanvas"></canvas>
+            </div>
 
-      // Log to console to verify connection
-      console.log("Firebase App Initialized:", app);
-      console.log("Analytics Initialized:", analytics);
-      console.log("Auth Initialized:", auth);
-      console.log("Firestore Initialized:", db);
+            <div class="controls-panel">
+                <h3 style="margin-top:0"><i class="fas fa-clipboard-list"></i> Lab Report</h3>
+                
+                <div class="form-group">
+                    <label>Student Name</label>
+                    <input type="text" id="studentName" class="form-control" placeholder="Enter your full name">
+                </div>
+
+                <div class="form-group">
+                    <label>1. Explain why the total volume is less than 100ml.</label>
+                    <textarea id="q1" rows="4" class="form-control" placeholder="Type your explanation..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>2. Which properties apply?</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" value="Different sizes"> Different particle sizes</label>
+                        <label><input type="checkbox" value="Spaces between"> Spaces between particles</label>
+                        <label><input type="checkbox" value="Small particles"> Particles are microscopic</label>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="submitBtn" onclick="submitWork()" style="width:100%; justify-content: center;">
+                    <i class="fas fa-paper-plane"></i> Submit to Teacher
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. TEACHER LOGIN -->
+    <div id="teacher-login" class="hidden">
+        <div class="login-card">
+            <h2 style="color:var(--secondary)">Teacher Access</h2>
+            <p style="color:#666; margin-bottom:20px;">Please verify your identity</p>
+            <input type="password" id="teacherPass" class="form-control" placeholder="Enter Password" style="margin-bottom:15px; text-align:center;">
+            <div style="display:flex; gap:10px; justify-content:center;">
+                <button class="btn btn-secondary" onclick="goHome()">Cancel</button>
+                <button class="btn btn-primary" onclick="checkPassword()">Login</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. TEACHER DASHBOARD -->
+    <div id="teacher-dashboard" class="hidden">
+        <div class="dashboard-top">
+            <div style="display:flex; align-items:center; gap:15px;">
+                <button class="btn btn-secondary" onclick="goHome()"><i class="fas fa-sign-out-alt"></i> Logout</button>
+                <h2 style="margin:0;">Classroom Dashboard</h2>
+            </div>
+            <div style="display:flex; align-items:center; gap:15px;">
+                <div id="live-status" class="status-badge"><i class="fas fa-circle-notch fa-spin"></i> Connecting...</div>
+                <button class="btn btn-danger" onclick="clearAllData()"><i class="fas fa-trash-alt"></i> Clear All Data</button>
+            </div>
+        </div>
+
+        <div id="submission-list" class="submissions-grid">
+            <!-- Cards injected here via JS -->
+        </div>
+    </div>
+
+    <!-- 5. VIEWER MODAL -->
+    <div id="viewer-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 style="margin:0" id="view-name">Student Name</h3>
+                <i class="fas fa-times" style="cursor:pointer; font-size:1.5rem;" onclick="closeViewer()"></i>
+            </div>
+            <div class="modal-body">
+                <div>
+                    <h4 style="color:var(--secondary); margin-top:0;">Particle Model:</h4>
+                    <img id="view-img" class="model-img" src="" alt="Student Model">
+                </div>
+                <div>
+                    <div class="answer-box">
+                        <h4>Explanation</h4>
+                        <p id="view-q1" style="margin:0; line-height:1.6;">...</p>
+                    </div>
+                    <div class="answer-box">
+                        <h4>Selected Properties</h4>
+                        <p id="view-q2" style="margin:0; font-weight:500;">...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeViewer()">Close</button>
+                <button class="btn btn-primary" onclick="downloadPDF()"><i class="fas fa-file-pdf"></i> Download PDF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIC SCRIPT -->
+    <script>
+        // --- Navigation Logic ---
+        function hideAll() {
+            document.getElementById('landing-page').classList.add('hidden');
+            document.getElementById('student-view').classList.add('hidden');
+            document.getElementById('teacher-login').classList.add('hidden');
+            document.getElementById('teacher-dashboard').classList.add('hidden');
+            document.getElementById('viewer-modal').classList.add('hidden');
+        }
+
+        function goHome() { 
+            hideAll(); 
+            document.getElementById('landing-page').classList.remove('hidden');
+            window.stopRealTimeListener(); // Stop listening to save resources
+        }
+
+        function showStudentView() { 
+            hideAll(); 
+            document.getElementById('student-view').classList.remove('hidden'); 
+            resize(); // Trigger canvas resize
+            if(!isAnimating) { isAnimating = true; animate(); }
+        }
+
+        function showTeacherLogin() { 
+            hideAll(); 
+            document.getElementById('teacher-login').classList.remove('hidden'); 
+        }
+        
+        function checkPassword() {
+            const p = document.getElementById('teacherPass').value;
+            if(p === "123456") {
+                hideAll();
+                document.getElementById('teacher-dashboard').classList.remove('hidden');
+                window.startRealTimeListener(); // Start Live Sync
+            } else {
+                alert("Incorrect password");
+            }
+        }
+
+        // --- Viewer Logic ---
+        let currentViewData = null;
+
+        function viewSubmission(id) {
+            const data = window.submissionCache[id];
+            currentViewData = data;
+            
+            document.getElementById('view-name').innerText = data.studentName;
+            document.getElementById('view-img').src = data.imageData;
+            document.getElementById('view-q1').innerText = data.answerQ1 || "No answer provided.";
+            document.getElementById('view-q2').innerText = data.answerQ2 && data.answerQ2.length > 0 ? data.answerQ2.join(", ") : "None selected";
+            
+            document.getElementById('viewer-modal').classList.remove('hidden');
+        }
+
+        function closeViewer() {
+            document.getElementById('viewer-modal').classList.add('hidden');
+        }
+
+        async function downloadPDF() {
+            if(!currentViewData) return;
+            
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Header
+            doc.setFillColor(0, 128, 128); // Teal
+            doc.rect(0, 0, 210, 20, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(16);
+            doc.setFont("helvetica", "bold");
+            doc.text("Particle Model Lab Report", 10, 13);
+            
+            // Student Info
+            doc.setTextColor(0,0,0);
+            doc.setFontSize(14);
+            doc.text("Student: " + currentViewData.studentName, 10, 35);
+            doc.setFontSize(10);
+            const dateStr = currentViewData.timestamp ? new Date(currentViewData.timestamp.toDate()).toLocaleString() : "";
+            doc.text("Submitted: " + dateStr, 10, 40);
+
+            // Image
+            const imgData = currentViewData.imageData;
+            const pdfWidth = 180; 
+            const pdfHeight = 100; 
+            doc.addImage(imgData, 'JPEG', 15, 50, pdfWidth, pdfHeight);
+
+            // Answers
+            let y = 165;
+            doc.setFontSize(12);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(0, 128, 128);
+            doc.text("1. Explanation:", 15, y);
+            
+            y += 7;
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(50, 50, 50);
+            const splitText = doc.splitTextToSize(currentViewData.answerQ1, 180);
+            doc.text(splitText, 15, y);
+            
+            y += (splitText.length * 7) + 10;
+            
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(0, 128, 128);
+            doc.text("2. Properties Identified:", 15, y);
+            
+            y += 7;
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(50, 50, 50);
+            const props = currentViewData.answerQ2 || [];
+            if(props.length === 0) doc.text("None", 15, y);
+            props.forEach(p => {
+                doc.text("• " + p, 15, y);
+                y += 6;
+            });
+
+            doc.save(currentViewData.studentName.replace(/\s/g, "_") + "_LabReport.pdf");
+        }
+
+        // --- SIMULATION ENGINE ---
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let particles = [];
+        let walls = [];
+        let sources = [];
+        let draggedParticle = null;
+        let dragOffsetX = 0, dragOffsetY = 0;
+        let isAnimating = false;
+
+        const LARGE_RADIUS = 18, SMALL_RADIUS = 10;
+        const WATER_COLOR = '#3498db'; // Brighter Blue
+        const ALCOHOL_COLOR = '#f1c40f'; // Brighter Yellow
+
+        function resize() {
+            if(document.getElementById('student-view').classList.contains('hidden')) return;
+            const container = canvas.parentElement;
+            width = container.clientWidth;
+            height = container.clientHeight;
+            // Handle high DPI displays
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = width * dpr;
+            canvas.height = height * dpr;
+            ctx.scale(dpr, dpr);
+            // Reset logic dims
+            initWorld();
+        }
+        window.addEventListener('resize', resize);
+
+        class Particle {
+            constructor(x, y, radius, color) {
+                this.x = x; this.y = y; this.radius = radius; this.color = color;
+                this.vx = 0; this.vy = 0; this.isDragging = false;
+            }
+            draw() {
+                ctx.beginPath(); 
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2);
+                ctx.fillStyle = this.color; 
+                ctx.fill();
+                // Add a shine effect
+                ctx.strokeStyle = "rgba(0,0,0,0.2)"; 
+                ctx.lineWidth = 1; 
+                ctx.stroke(); 
+                ctx.fillStyle = "rgba(255,255,255,0.3)";
+                ctx.beginPath();
+                ctx.arc(this.x - this.radius*0.3, this.y - this.radius*0.3, this.radius/3, 0, Math.PI*2);
+                ctx.fill();
+            }
+            update() {
+                if(this.isDragging) return;
+                this.x += this.vx; this.y += this.vy;
+                this.vx *= 0.9; this.vy *= 0.9; // Friction
+            }
+        }
+
+        function initWorld() {
+            walls = []; sources = [];
+            // Responsive layout for cylinders
+            const cylW = width * 0.12; 
+            const cylH = height * 0.6;
+            const groundY = height - 30;
+            const startY = groundY - cylH;
+            
+            // Cylinders positions
+            const positions = [0.15, 0.4, 0.65];
+            
+            positions.forEach(pct => {
+                const x = width * pct;
+                walls.push({x: x, y: startY, w: 4, h: cylH}); // Left wall
+                walls.push({x: x+cylW, y: startY, w: 4, h: cylH}); // Right wall
+                walls.push({x: x, y: groundY, w: cylW+4, h: 4}); // Bottom
+            });
+
+            // Sources on the far right
+            const srcX = width * 0.9;
+            const srcStartY = 60;
+            const gap = 70;
+            
+            sources.push({x: srcX, y: srcStartY, r: LARGE_RADIUS, c: WATER_COLOR, l: "Water (L)"});
+            sources.push({x: srcX, y: srcStartY+gap, r: SMALL_RADIUS, c: WATER_COLOR, l: "Water (S)"});
+            sources.push({x: srcX, y: srcStartY+gap*2, r: LARGE_RADIUS, c: ALCOHOL_COLOR, l: "Alcohol (L)"});
+            sources.push({x: srcX, y: srcStartY+gap*3, r: SMALL_RADIUS, c: ALCOHOL_COLOR, l: "Alcohol (S)"});
+        }
+
+        function clearParticles() { particles = []; }
+
+        function resolveCollisions() {
+             // Wall Collisions
+             for (let p of particles) {
+                if (p.isDragging) continue; 
+                // Canvas boundaries
+                if (p.y + p.radius > height) { p.y = height - p.radius; p.vy *= -0.5; }
+                if (p.y - p.radius < 0) { p.y = p.radius; p.vy *= -0.5; }
+                if (p.x + p.radius > width) { p.x = width - p.radius; p.vx *= -0.5; }
+                if (p.x - p.radius < 0) { p.x = p.radius; p.vx *= -0.5; }
+
+                // Cylinder Walls
+                for (let w of walls) {
+                    if (p.x + p.radius > w.x && p.x - p.radius < w.x + w.w &&
+                        p.y + p.radius > w.y && p.y - p.radius < w.y + w.h) {
+                        
+                        // Find closest edge
+                        let ol = (p.x + p.radius) - w.x;
+                        let or = (w.x + w.w) - (p.x - p.radius);
+                        let ot = (p.y + p.radius) - w.y;
+                        let ob = (w.y + w.h) - (p.y - p.radius);
+                        
+                        let min = Math.min(ol, or, ot, ob);
+                        
+                        if (min === ol) { p.x = w.x - p.radius; p.vx *= -0.5; }
+                        else if (min === or) { p.x = w.x + w.w + p.radius; p.vx *= -0.5; }
+                        else if (min === ot) { p.y = w.y - p.radius; p.vy *= -0.5; }
+                        else if (min === ob) { p.y = w.y + w.h + p.radius; p.vy *= -0.5; }
+                    }
+                }
+            }
+            // Particle-Particle
+            for (let i = 0; i < particles.length; i++) {
+                for (let j = i + 1; j < particles.length; j++) {
+                    let p1 = particles[i], p2 = particles[j];
+                    let dx = p2.x - p1.x, dy = p2.y - p1.y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    let minD = p1.radius + p2.radius;
+                    
+                    if (dist < minD) {
+                        let overlap = minD - dist;
+                        if(dist===0) { dx=1; dy=0; dist=1; }
+                        let nx = dx/dist, ny = dy/dist;
+                        
+                        if(!p1.isDragging && !p2.isDragging) {
+                            p1.x -= nx*overlap*0.5; p1.y -= ny*overlap*0.5;
+                            p2.x += nx*overlap*0.5; p2.y += ny*overlap*0.5;
+                        } else if(p1.isDragging && !p2.isDragging) {
+                            p2.x += nx*overlap; p2.y += ny*overlap;
+                        } else if(!p1.isDragging && p2.isDragging) {
+                            p1.x -= nx*overlap; p1.y -= ny*overlap;
+                        }
+                    }
+                }
+            }
+        }
+
+        function animate() {
+            if(document.getElementById('student-view').classList.contains('hidden')) {
+                isAnimating = false; return;
+            }
+
+            ctx.clearRect(0,0,width,height);
+            
+            // Draw Source Zone Background
+            const zX = width * 0.85;
+            ctx.fillStyle = '#f8f9fa'; 
+            ctx.fillRect(zX, 0, width-zX, height);
+            ctx.strokeStyle = '#e0e0e0'; 
+            ctx.beginPath(); ctx.moveTo(zX, 0); ctx.lineTo(zX, height); ctx.stroke();
+
+            // Draw Walls
+            ctx.fillStyle = '#2c3e50';
+            walls.forEach(w => ctx.fillRect(w.x, w.y, w.w, w.h));
+
+            // Draw Sources
+            ctx.textAlign = 'center';
+            sources.forEach(s => {
+                ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+                ctx.fillStyle = s.c; ctx.fill(); 
+                ctx.strokeStyle = "#999"; ctx.lineWidth = 1; ctx.stroke();
+                
+                ctx.fillStyle = '#666'; ctx.font = '10px Poppins';
+                ctx.fillText(s.l, s.x, s.y + s.r + 15);
+            });
+
+            // Labels
+            ctx.fillStyle = '#555'; ctx.font = 'bold 12px Poppins'; 
+            if(walls.length > 0) {
+                ctx.fillText("50ml Water", walls[0].x + (walls[1].x-walls[0].x)/2 + 2, walls[2].y + 20);
+                ctx.fillText("50ml Alcohol", walls[3].x + (walls[4].x-walls[3].x)/2 + 2, walls[5].y + 20);
+                ctx.fillText("Mixture", walls[6].x + (walls[7].x-walls[6].x)/2 + 2, walls[8].y + 20);
+            }
+
+            resolveCollisions();
+            particles.forEach(p => { p.update(); p.draw(); });
+            
+            requestAnimationFrame(animate);
+        }
+
+        // Input Handlers
+        function getPos(e) {
+            const r = canvas.getBoundingClientRect();
+            // Adjust for scale
+            const scaleX = canvas.width / r.width;
+            const scaleY = canvas.height / r.height;
+            
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            return { 
+                x: (clientX - r.left) * (width/r.width), 
+                y: (clientY - r.top) * (height/r.height) 
+            };
+        }
+        
+        function start(e) {
+            if(e.target !== canvas) return;
+            e.preventDefault();
+            const p = getPos(e);
+            
+            // Check existing
+            for(let i=particles.length-1; i>=0; i--) {
+                const pt = particles[i];
+                if(Math.hypot(p.x-pt.x, p.y-pt.y) <= pt.radius + 5) {
+                    draggedParticle = pt; pt.isDragging = true;
+                    dragOffsetX = p.x - pt.x; dragOffsetY = p.y - pt.y;
+                    return;
+                }
+            }
+            // Check sources
+            for(let s of sources) {
+                if(Math.hypot(p.x-s.x, p.y-s.y) <= s.r + 10) {
+                    const np = new Particle(s.x, s.y, s.r, s.c);
+                    particles.push(np);
+                    draggedParticle = np; np.isDragging = true;
+                    dragOffsetX = 0; dragOffsetY = 0;
+                    return;
+                }
+            }
+        }
+        
+        function move(e) {
+            if(!draggedParticle) return;
+            if(e.target === canvas) e.preventDefault();
+            const p = getPos(e);
+            draggedParticle.x = p.x - dragOffsetX;
+            draggedParticle.y = p.y - dragOffsetY;
+        }
+        
+        function end() { 
+            if(draggedParticle) { 
+                draggedParticle.isDragging = false; 
+                draggedParticle = null; 
+            } 
+        }
+
+        canvas.addEventListener('mousedown', start);
+        canvas.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', end);
+        canvas.addEventListener('touchstart', start, {passive:false});
+        canvas.addEventListener('touchmove', move, {passive:false});
+        window.addEventListener('touchend', end);
+
     </script>
 </body>
 </html>
