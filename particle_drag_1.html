@@ -2,26 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Critical for iPad: Prevent zooming and ensure 1:1 scale -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Particle Model Simulation</title>
     
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Matter.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
-    <!-- html2canvas (for screenshots) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    <!-- html2pdf -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-    <!-- Firebase SDKs -->
+    <!-- Firebase SDKs (Only App and Firestore now) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
-        import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
 
-        // --- YOUR FIREBASE CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyAGj-0VFzGfD43JYIjScNAamxQzCp9pfog",
             authDomain: "sciencelabsystem.firebaseapp.com",
@@ -31,11 +24,9 @@
             appId: "1:585267705698:web:9db6f284c0231f066cde3b",
             measurementId: "G-0BG1XX9SDF"
         };
-        // ---------------------------------------
 
         const app = initializeApp(firebaseConfig);
         window.db = getFirestore(app);
-        window.storage = getStorage(app);
         window.collection = collection;
         window.addDoc = addDoc;
         window.onSnapshot = onSnapshot;
@@ -44,9 +35,6 @@
         window.query = query;
         window.orderBy = orderBy;
         window.getDocs = getDocs;
-        window.ref = ref;
-        window.uploadString = uploadString;
-        window.getDownloadURL = getDownloadURL;
     </script>
 
     <style>
@@ -55,34 +43,31 @@
             background-color: #f8fafc; 
             -webkit-tap-highlight-color: transparent; 
             overflow-x: hidden; 
-            overscroll-behavior: none; /* Prevent bounce on iPad */
+            overscroll-behavior: none; 
         }
         .hidden-section { display: none !important; }
         
-        /* Layout Container */
         .sim-layout {
             display: flex;
             flex-direction: row; 
-            height: 55vh; /* Fixed height relative to viewport */
-            min-height: 400px;
+            height: 50vh; 
+            min-height: 350px;
             background: white;
             border: 1px solid #e2e8f0;
             border-radius: 12px;
             overflow: hidden;
         }
 
-        /* Canvas Area */
         .canvas-area {
             flex: 1;
             position: relative;
             background: #ffffff;
             overflow: hidden;
-            touch-action: none; /* CRITICAL: Disables scrolling on canvas for iPad */
+            touch-action: none; 
             user-select: none;
             -webkit-user-select: none;
         }
 
-        /* Palette Area (Right Side) */
         .palette-area {
             width: 130px;
             background: #f8fafc;
@@ -96,7 +81,6 @@
             box-shadow: -2px 0 10px rgba(0,0,0,0.05);
         }
 
-        /* Draggable Items */
         .draggable-source {
             cursor: grab;
             transition: transform 0.1s;
@@ -106,21 +90,18 @@
         }
         .draggable-source:active { cursor: grabbing; transform: scale(0.95); }
 
-        /* The "Ghost" element being dragged */
         .drag-proxy {
             position: fixed;
             pointer-events: none;
             z-index: 9999;
             opacity: 0.8;
-            transform: translate(-50%, -50%); /* Center on finger */
+            transform: translate(-50%, -50%);
             box-shadow: 0 4px 6px rgba(0,0,0,0.2);
         }
 
-        /* Overlays on Canvas */
         .overlay-text { position: absolute; font-weight: bold; color: #64748b; pointer-events: none; user-select: none; }
         .math-symbol { font-size: 2.5rem; color: #334155; top: 45%; transform: translateY(-50%); }
 
-        /* Loader */
         .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
@@ -151,7 +132,6 @@
 
     <!-- 2. STUDENT VIEW -->
     <div id="view-student" class="hidden-section w-full max-w-7xl mx-auto p-2 pb-20">
-        <!-- Header -->
         <div class="flex justify-between items-center mb-2 px-2">
             <button onclick="switchView('landing')" class="text-slate-500 hover:text-slate-800 text-sm flex items-center gap-1">
                 &larr; Back
@@ -161,73 +141,48 @@
 
         <div class="bg-white p-1 rounded-xl shadow-sm border border-slate-200">
             <h2 class="text-lg font-bold text-green-700 px-2 mb-1">Model for mixing water and alcohol</h2>
-            <p class="text-xs text-slate-500 px-2 mb-2">Instruction: Drag particles. They will stay where you place them (Mid-air allowed).</p>
+            <p class="text-xs text-slate-500 px-2 mb-2">Instruction: Drag particles. Double-tap to delete.</p>
 
             <!-- SIMULATION CONTAINER -->
             <div id="simulation-capture-area" class="sim-layout">
-                
-                <!-- Left: Canvas -->
                 <div id="canvas-wrapper" class="canvas-area">
-                    <!-- Overlays: Using percentages for responsiveness -->
                     <div class="overlay-text math-symbol" style="left: 32%;">+</div>
                     <div class="overlay-text math-symbol" style="left: 64%;">➡</div>
-                    
-                    <div class="overlay-text text-xs" style="left: 2%; bottom: 5px;">Before mixing water and alcohol</div>
-                    <div class="overlay-text text-xs" style="right: 2%; bottom: 5px;">After mixing water and alcohol</div>
+                    <div class="overlay-text text-xs" style="left: 2%; bottom: 5px;">Before mixing</div>
+                    <div class="overlay-text text-xs" style="right: 2%; bottom: 5px;">After mixing</div>
                 </div>
 
-                <!-- Right: Palette -->
                 <div class="palette-area">
-                    <!-- Water Section -->
                     <div class="flex flex-col items-center gap-1 w-full">
                         <span class="text-xs font-bold text-slate-500">Water</span>
                         <div class="flex gap-2 items-end justify-center">
-                            <!-- Large Water -->
-                            <div class="draggable-source w-10 h-10 rounded-full bg-cyan-300 border border-slate-400 shadow-sm" 
-                                 data-type="water" data-size="large"></div>
-                            <!-- Small Water -->
-                            <div class="draggable-source w-6 h-6 rounded-full bg-cyan-300 border border-slate-400 shadow-sm" 
-                                 data-type="water" data-size="small"></div>
+                            <div class="draggable-source w-10 h-10 rounded-full bg-cyan-300 border border-slate-400 shadow-sm" data-type="water" data-size="large"></div>
+                            <div class="draggable-source w-6 h-6 rounded-full bg-cyan-300 border border-slate-400 shadow-sm" data-type="water" data-size="small"></div>
                         </div>
                     </div>
-
                     <div class="w-full h-px bg-slate-200"></div>
-
-                    <!-- Alcohol Section -->
                     <div class="flex flex-col items-center gap-1 w-full">
                         <span class="text-xs font-bold text-slate-500">Alcohol</span>
                         <div class="flex gap-2 items-end justify-center">
-                            <!-- Large Alcohol -->
-                            <div class="draggable-source w-10 h-10 rounded-full bg-amber-200 border border-slate-400 shadow-sm" 
-                                 data-type="alcohol" data-size="large"></div>
-                            <!-- Small Alcohol -->
-                            <div class="draggable-source w-6 h-6 rounded-full bg-amber-200 border border-slate-400 shadow-sm" 
-                                 data-type="alcohol" data-size="small"></div>
+                            <div class="draggable-source w-10 h-10 rounded-full bg-amber-200 border border-slate-400 shadow-sm" data-type="alcohol" data-size="large"></div>
+                            <div class="draggable-source w-6 h-6 rounded-full bg-amber-200 border border-slate-400 shadow-sm" data-type="alcohol" data-size="small"></div>
                         </div>
                     </div>
-
                     <div class="mt-auto w-full space-y-2">
-                        <div class="text-[10px] text-center text-slate-400 leading-tight">
-                            Double-tap particles to delete
-                        </div>
-                        <button onclick="clearParticles()" class="w-full py-2 px-2 bg-white border border-red-200 text-red-500 rounded text-xs hover:bg-red-50">
-                            Reset
-                        </button>
+                        <button onclick="clearParticles()" class="w-full py-2 px-2 bg-white border border-red-200 text-red-500 rounded text-xs hover:bg-red-50">Reset</button>
                     </div>
                 </div>
             </div>
 
             <!-- Questions -->
             <div class="mt-4 px-4 py-2">
-                <!-- Question 1 -->
                 <div class="mb-4">
-                    <label class="block font-semibold text-slate-700 text-sm mb-1">1. Explain why the total volume changes when water and alcohol are mixed.</label>
+                    <label class="block font-semibold text-slate-700 text-sm mb-1">1. Explain why the total volume changes when water and alcohol are mixed. <span class="text-red-500">*</span></label>
                     <textarea id="q1-answer" class="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-cyan-500 outline-none text-sm" rows="2"></textarea>
                 </div>
 
-                <!-- Question 2 -->
                 <div class="mb-4">
-                    <label class="block font-semibold text-slate-700 text-sm mb-2">2. Which of the following properties of particle allows you to explain the above phenomenon: (can choose more than 1 option)</label>
+                    <label class="block font-semibold text-slate-700 text-sm mb-2">2. Which of the following properties of particle allows you to explain the above phenomenon? <span class="text-red-500">*</span></label>
                     <div class="space-y-2 bg-slate-50 p-3 rounded border border-slate-200">
                         <label class="flex items-center gap-2 text-sm text-slate-700 cursor-pointer hover:bg-slate-100 p-1 rounded">
                             <input type="checkbox" name="q2" value="Different particles have different size" class="w-4 h-4 text-cyan-600 rounded focus:ring-cyan-500 border-slate-300">
@@ -253,7 +208,19 @@
         </div>
     </div>
 
-    <!-- 3. TEACHER LOGIN -->
+    <!-- 3. SUCCESS PAGE -->
+    <div id="view-success" class="hidden-section min-h-screen flex flex-col items-center justify-center p-4 bg-green-50">
+        <div class="bg-white p-10 rounded-2xl shadow-xl text-center max-w-md">
+            <div class="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            </div>
+            <h2 class="text-3xl font-bold text-slate-800 mb-2">Thank You!</h2>
+            <p class="text-slate-600 mb-6">Your response has been successfully submitted.</p>
+            <button onclick="location.reload()" class="text-sm text-slate-400 hover:text-slate-600 underline">Return to Home (New Student)</button>
+        </div>
+    </div>
+
+    <!-- 4. TEACHER LOGIN -->
     <div id="view-teacher-login" class="hidden-section min-h-screen flex items-center justify-center bg-slate-100 p-4">
         <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
             <h2 class="text-2xl font-bold text-slate-800 mb-4">Teacher Access</h2>
@@ -266,7 +233,7 @@
         </div>
     </div>
 
-    <!-- 4. TEACHER DASHBOARD -->
+    <!-- 5. TEACHER DASHBOARD -->
     <div id="view-teacher-dashboard" class="hidden-section min-h-screen bg-slate-50">
         <div class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
             <div>
@@ -313,7 +280,6 @@
             document.getElementById(`view-${viewName}`).classList.remove('hidden-section');
             
             if (viewName === 'student') {
-                // Delay slightly to allow DOM to render before initializing canvas
                 setTimeout(() => {
                     initSimulation();
                     initDragAndDrop(); 
@@ -345,7 +311,6 @@
         const container = document.getElementById('canvas-wrapper');
 
         function initSimulation() {
-            // Clean up if exists
             if (render) {
                 Render.stop(render);
                 Runner.stop(runner);
@@ -353,7 +318,6 @@
             }
 
             engine = Engine.create();
-            // ZERO GRAVITY - Particles float in mid air
             engine.world.gravity.y = 0;
             engine.world.gravity.x = 0;
 
@@ -365,11 +329,10 @@
                     height: container.clientHeight,
                     background: 'transparent',
                     wireframes: false,
-                    pixelRatio: window.devicePixelRatio || 1 // Sharpness on Retina/iPad
+                    pixelRatio: window.devicePixelRatio || 1
                 }
             });
 
-            // Add Mouse Control (for moving particles after drop)
             const mouse = Mouse.create(render.canvas);
             const mouseConstraint = MouseConstraint.create(engine, {
                 mouse: mouse,
@@ -378,7 +341,6 @@
             render.mouse = mouse;
             Composite.add(engine.world, mouseConstraint);
 
-            // Initial Build
             buildWalls();
 
             Render.run(render);
@@ -386,42 +348,32 @@
             Runner.run(runner, engine);
         }
 
-        // --- RESPONSIVE WALL DRAWING ---
         function buildWalls() {
             if (!engine) return;
             Composite.remove(engine.world, walls);
             walls = [];
             
-            // Get actual logical dimensions
             const w = container.clientWidth;
             const h = container.clientHeight;
             
-            // Update render dimensions
             render.canvas.width = w * (window.devicePixelRatio || 1);
             render.canvas.height = h * (window.devicePixelRatio || 1);
             render.canvas.style.width = `${w}px`;
             render.canvas.style.height = `${h}px`;
             
-            // Percentage-based dimensions for iPad responsiveness
             const wallThick = 4;
-            const cylW = w * 0.13; // 13% of width
-            const cylH = h * 0.65; // 65% of height
-            const floorY = h * 0.85; // Bottom position
+            const cylW = w * 0.13; 
+            const cylH = h * 0.65; 
+            const floorY = h * 0.85; 
 
-            // Center positions (Percentages of Width)
-            // Left Cylinder: 16%, Middle: 48%, Right: 84%
             const centers = [w * 0.16, w * 0.48, w * 0.84]; 
 
             centers.forEach(cx => {
                 const leftX = cx - cylW/2;
                 const rightX = cx + cylW/2;
-                
                 walls.push(
-                    // Left Wall
                     Bodies.rectangle(leftX, floorY - cylH/2, wallThick, cylH, { isStatic: true, render: { fillStyle: '#334155' } }),
-                    // Right Wall
                     Bodies.rectangle(rightX, floorY - cylH/2, wallThick, cylH, { isStatic: true, render: { fillStyle: '#334155' } }),
-                    // Bottom
                     Bodies.rectangle(cx, floorY, cylW + wallThick, wallThick, { isStatic: true, render: { fillStyle: '#334155' } })
                 );
             });
@@ -429,18 +381,14 @@
             Composite.add(engine.world, walls);
         }
 
-        // Resize Listener
         window.addEventListener('resize', () => {
             if (document.getElementById('view-student').classList.contains('hidden-section')) return;
-            // Debounce resize
             clearTimeout(window.resizeTimer);
             window.resizeTimer = setTimeout(buildWalls, 200);
         });
 
-        // --- CUSTOM DRAG & DROP FOR IPAD ---
         function initDragAndDrop() {
             const sources = document.querySelectorAll('.draggable-source');
-            
             sources.forEach(src => {
                 src.addEventListener('touchstart', handleStart, { passive: false });
                 src.addEventListener('mousedown', handleStart);
@@ -448,16 +396,12 @@
         }
 
         function handleStart(e) {
-            e.preventDefault(); // Stop scrolling
-            
+            e.preventDefault(); 
             const src = e.target;
             const type = src.dataset.type;
             const size = src.dataset.size;
-            
-            // Get pointer position
             const point = e.touches ? e.touches[0] : e;
             
-            // Create "Ghost" element
             const ghost = document.createElement('div');
             ghost.className = 'drag-proxy';
             ghost.style.width = src.offsetWidth + 'px';
@@ -465,14 +409,11 @@
             ghost.style.backgroundColor = getComputedStyle(src).backgroundColor;
             ghost.style.borderRadius = '50%';
             ghost.style.border = '1px solid #333';
-            
-            // Initial position
             ghost.style.left = point.clientX + 'px';
             ghost.style.top = point.clientY + 'px';
             
             document.body.appendChild(ghost);
 
-            // Move Handler
             function onMove(evt) {
                 evt.preventDefault();
                 const mvPoint = evt.touches ? evt.touches[0] : evt;
@@ -480,34 +421,24 @@
                 ghost.style.top = mvPoint.clientY + 'px';
             }
 
-            // End Handler
             function onEnd(evt) {
-                // Remove listeners
                 document.removeEventListener('touchmove', onMove);
                 document.removeEventListener('touchend', onEnd);
                 document.removeEventListener('mousemove', onMove);
                 document.removeEventListener('mouseup', onEnd);
 
-                // Get final position
                 const endPoint = evt.changedTouches ? evt.changedTouches[0] : evt;
                 const rect = container.getBoundingClientRect();
 
-                // Check if dropped inside canvas
                 if (endPoint.clientX >= rect.left && endPoint.clientX <= rect.right &&
                     endPoint.clientY >= rect.top && endPoint.clientY <= rect.bottom) {
-                    
-                    // Calculate Canvas Relative Coords
                     const x = endPoint.clientX - rect.left;
                     const y = endPoint.clientY - rect.top;
-                    
                     spawnParticleInCanvas(x, y, type, size);
                 }
-
-                // Destroy ghost
                 ghost.remove();
             }
 
-            // Attach global listeners for move/end
             document.addEventListener('touchmove', onMove, { passive: false });
             document.addEventListener('touchend', onEnd);
             document.addEventListener('mousemove', onMove);
@@ -515,23 +446,18 @@
         }
 
         function spawnParticleInCanvas(x, y, type, size) {
-            const color = type === 'water' ? '#67e8f9' : '#fde68a'; // Cyan / Amber
+            const color = type === 'water' ? '#67e8f9' : '#fde68a'; 
             let r = size === 'large' ? 14 : 9;
-            
-            // Create particle
-            // frictionAir: 0.05 slows it down if bumped, but gravity is 0 so it stays put mostly
             const p = Bodies.circle(x, y, r, {
-                restitution: 0.2, // Bouncy
-                friction: 0.5,    // Rubbing against walls
-                frictionAir: 0.05, // Slow down movement in "air"
+                restitution: 0.2, 
+                friction: 0.5,    
+                frictionAir: 0.05, 
                 render: { fillStyle: color, strokeStyle: '#333', lineWidth: 1.5 }
             });
             Composite.add(engine.world, p);
         }
 
-        // Double Click/Tap to Delete
         container.addEventListener('dblclick', (e) => handleDelete(e.clientX, e.clientY));
-        
         let lastTap = 0;
         container.addEventListener('touchend', (e) => {
             const currentTime = new Date().getTime();
@@ -560,48 +486,61 @@
             Composite.remove(engine.world, bodies);
         };
 
-        // --- DATA SUBMISSION ---
+        // --- DATA SUBMISSION (MODIFIED: NO STORAGE BUCKET) ---
         async function submitWork() {
+            // 1. VALIDATION
             const name = document.getElementById('student-name').value.trim();
-            if (!name) return alert("Please enter your name.");
+            const q1 = document.getElementById('q1-answer').value.trim();
+            const q2Options = document.querySelectorAll('input[name="q2"]:checked');
             
+            if (!name) {
+                alert("Please enter your name at the top.");
+                return;
+            }
+            if (!q1) {
+                alert("Please answer Question 1.");
+                return;
+            }
+            if (q2Options.length === 0) {
+                alert("Please select at least one option for Question 2.");
+                return;
+            }
+
             const btn = document.getElementById('submit-btn');
             btn.innerText = 'Uploading...';
             btn.disabled = true;
 
-            // Get Q2 Answers
-            const q2Options = document.querySelectorAll('input[name="q2"]:checked');
             const q2Values = Array.from(q2Options).map(cb => cb.value);
 
             try {
-                // Capture Canvas area
+                // 2. CAPTURE & COMPRESS
                 const element = document.getElementById('simulation-capture-area');
-                const canvas = await html2canvas(element, { scale: 2, useCORS: true });
-                const imgData = canvas.toDataURL('image/jpeg', 0.8);
+                // Scale 1.5 is enough for readability, keeps file size low
+                const canvas = await html2canvas(element, { scale: 1.5, useCORS: true });
+                // Quality 0.6 reduces size significantly to fit in Firestore document
+                const imgBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
-                // Upload Image
-                const storageRef = window.ref(window.storage, `submissions/${Date.now()}_${name}.jpg`);
-                await window.uploadString(storageRef, imgData, 'data_url');
-                const url = await window.getDownloadURL(storageRef);
-
-                // Save Data
+                // 3. SAVE DIRECTLY TO FIRESTORE
                 await window.addDoc(window.collection(window.db, "submissions"), {
                     studentName: name,
-                    imageUrl: url,
-                    q1: document.getElementById('q1-answer').value,
+                    imageBase64: imgBase64, // Storing image string directly
+                    q1: q1,
                     q2: q2Values,
                     timestamp: new Date()
                 });
 
-                alert("Submitted!");
-                switchView('landing');
+                // 4. SHOW SUCCESS PAGE
+                switchView('success');
+                
+                // Cleanup form for next time (if page reloaded)
                 clearParticles();
                 document.getElementById('student-name').value = '';
                 document.getElementById('q1-answer').value = '';
                 document.querySelectorAll('input[name="q2"]').forEach(cb => cb.checked = false);
+
             } catch (e) {
                 console.error(e);
-                alert("Error submitting: " + e.message);
+                alert("Error submitting. File might be too large or connection failed.");
             } finally {
                 btn.innerText = 'Submit Work';
                 btn.disabled = false;
@@ -614,7 +553,7 @@
             const loader = document.getElementById('loading-submissions');
             const noData = document.getElementById('no-data-msg');
 
-            if (unsubscribeListener) return; // Already listening
+            if (unsubscribeListener) return;
 
             loader.classList.remove('hidden');
             grid.innerHTML = '';
@@ -634,9 +573,10 @@
                         const card = document.createElement('div');
                         card.className = "bg-white rounded-lg shadow hover:shadow-md transition cursor-pointer overflow-hidden border border-slate-200 flex flex-col";
                         card.onclick = () => openModal(data);
+                        // Using base64 string directly in src
                         card.innerHTML = `
                             <div class="h-40 bg-slate-100 overflow-hidden relative border-b">
-                                <img src="${data.imageUrl}" class="w-full h-full object-cover">
+                                <img src="${data.imageBase64}" class="w-full h-full object-cover">
                             </div>
                             <div class="p-4">
                                 <h3 class="font-bold text-slate-800">${data.studentName}</h3>
@@ -662,7 +602,6 @@
             currentData = data;
             document.getElementById('modal-student-name').innerText = data.studentName;
             
-            // Format Q2 list
             let q2Html = '<li class="text-slate-400 italic">No options selected</li>';
             if (data.q2 && data.q2.length > 0) {
                 q2Html = data.q2.map(item => `<li>${item}</li>`).join('');
@@ -671,7 +610,7 @@
             document.getElementById('modal-content').innerHTML = `
                 <div id="pdf-target" class="space-y-4">
                     <div class="border border-slate-200 rounded overflow-hidden">
-                        <img src="${data.imageUrl}" class="w-full">
+                        <img src="${data.imageBase64}" class="w-full">
                     </div>
                     
                     <div class="bg-slate-50 p-4 rounded border border-slate-100">
