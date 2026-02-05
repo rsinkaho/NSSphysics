@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- Prevent zooming and ensure proper scaling on iPad -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Particle Model Simulation</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Matter.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <!-- html2canvas (for screenshots) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- html2pdf -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, query, orderBy, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+        import { getStorage, ref, uploadString, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+        // --- PASTE YOUR FIREBASE CONFIG HERE ---
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+        // ---------------------------------------
+
+        const app = initializeApp(firebaseConfig);
+        window.db = getFirestore(app);
+        window.storage = getStorage(app);
+        window.collection = collection;
+        window.addDoc = addDoc;
+        window.onSnapshot = onSnapshot;
+        window.deleteDoc = deleteDoc;
+        window.doc = doc;
+        window.query = query;
+        window.orderBy = orderBy;
+        window.getDocs = getDocs;
+        window.ref = ref;
+        window.uploadString = uploadString;
+        window.getDownloadURL = getDownloadURL;
+    </script>
+
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #f8fafc; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+        .hidden-section { display: none !important; }
+        
+        /* Layout Container */
+        .sim-layout {
+            display: flex;
+            flex-direction: row; /* Always side-by-side like the image */
+            height: 60vh;
+            min-height: 450px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        /* Canvas Area */
+        .canvas-area {
+            flex: 1;
+            position: relative;
+            background: #ffffff;
+            overflow: hidden;
+            touch-action: none; /* Critical for iPad interaction */
+        }
+
+        /* Palette Area (Right Side) */
+        .palette-area {
+            width: 140px;
+            background: #f8fafc;
+            border-left: 1px solid #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem 0.5rem;
+            gap: 1.5rem;
+            z-index: 10;
+        }
+
+        /* Draggable Items */
+        .draggable-source {
+            cursor: grab;
+            transition: transform 0.1s;
+            touch-action: none; /* PREVENTS SCROLLING ON IPAD WHILE DRAGGING */
+        }
+        .draggable-source:active { cursor: grabbing; transform: scale(0.95); }
+
+        /* The "Ghost" element being dragged */
+        .drag-proxy {
+            position: fixed;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0.8;
+            transform: translate(-50%, -50%); /* Center on finger */
+        }
+
+        /* Overlays on Canvas */
+        .overlay-text { position: absolute; font-weight: bold; color: #64748b; pointer-events: none; user-select: none; }
+        .math-symbol { font-size: 3rem; color: #334155; top: 45%; transform: translateY(-50%); }
+        .cyl-label { bottom: 20px; font-size: 0.8rem; text-align: center; width: 100px; }
+
+        /* Loader */
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-slate-800">
+
+    <!-- 1. LANDING PAGE -->
+    <div id="view-landing" class="min-h-screen flex flex-col items-center justify-center p-4">
+        <h1 class="text-3xl font-bold text-slate-700 mb-2 text-center">Model for Mixing Water and Alcohol</h1>
+        <p class="text-slate-500 mb-8 text-center max-w-lg">Construct a particle model to explain what happens when mixing liquids.</p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
+            <button onclick="switchView('student')" class="p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition border-2 border-transparent hover:border-cyan-500 text-center">
+                <div class="w-16 h-16 bg-cyan-100 text-cyan-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                </div>
+                <h2 class="text-2xl font-semibold">Student</h2>
+            </button>
+
+            <button onclick="switchView('teacher-login')" class="p-8 bg-white rounded-2xl shadow-lg hover:shadow-xl transition border-2 border-transparent hover:border-indigo-500 text-center">
+                <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" /></svg>
+                </div>
+                <h2 class="text-2xl font-semibold">Teacher</h2>
+            </button>
+        </div>
+    </div>
+
+    <!-- 2. STUDENT VIEW -->
+    <div id="view-student" class="hidden-section w-full max-w-7xl mx-auto p-2 pb-20">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-2 px-2">
+            <button onclick="switchView('landing')" class="text-slate-500 hover:text-slate-800 text-sm flex items-center gap-1">
+                &larr; Back
+            </button>
+            <input type="text" id="student-name" placeholder="Enter your name..." class="border border-slate-300 rounded px-3 py-1 w-48 text-sm focus:ring-2 focus:ring-cyan-500 outline-none">
+        </div>
+
+        <div class="bg-white p-1 rounded-xl shadow-sm border border-slate-200">
+            <h2 class="text-lg font-bold text-green-700 px-2 mb-1">Model for mixing water and alcohol</h2>
+            <p class="text-xs text-slate-500 px-2 mb-2">Instruction: Drag the water and alcohol particles from the right into the cylinders.</p>
+
+            <!-- SIMULATION CONTAINER -->
+            <div id="simulation-capture-area" class="sim-layout">
+                
+                <!-- Left: Canvas -->
+                <div id="canvas-wrapper" class="canvas-area">
+                    <!-- Overlays -->
+                    <div class="overlay-text math-symbol" style="left: 31%;">+</div>
+                    <div class="overlay-text math-symbol" style="left: 62%;">➡</div>
+                    
+                    <div class="overlay-text text-xs" style="left: 2%; bottom: 5px;">Before mixing water and alcohol</div>
+                    <div class="overlay-text text-xs" style="right: 2%; bottom: 5px;">After mixing water and alcohol</div>
+                </div>
+
+                <!-- Right: Palette -->
+                <div class="palette-area">
+                    <!-- Water Section -->
+                    <div class="flex flex-col items-center gap-2 w-full">
+                        <span class="text-xs font-bold text-slate-500">Water</span>
+                        <div class="flex gap-2 items-end">
+                            <!-- Large Water -->
+                            <div class="draggable-source w-10 h-10 rounded-full bg-cyan-300 border border-slate-400 shadow-sm" 
+                                 data-type="water" data-size="large"></div>
+                            <!-- Small Water -->
+                            <div class="draggable-source w-6 h-6 rounded-full bg-cyan-300 border border-slate-400 shadow-sm" 
+                                 data-type="water" data-size="small"></div>
+                        </div>
+                    </div>
+
+                    <div class="w-full h-px bg-slate-200"></div>
+
+                    <!-- Alcohol Section -->
+                    <div class="flex flex-col items-center gap-2 w-full">
+                        <span class="text-xs font-bold text-slate-500">Alcohol</span>
+                        <div class="flex gap-2 items-end">
+                            <!-- Large Alcohol -->
+                            <div class="draggable-source w-10 h-10 rounded-full bg-amber-200 border border-slate-400 shadow-sm" 
+                                 data-type="alcohol" data-size="large"></div>
+                            <!-- Small Alcohol -->
+                            <div class="draggable-source w-6 h-6 rounded-full bg-amber-200 border border-slate-400 shadow-sm" 
+                                 data-type="alcohol" data-size="small"></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto w-full">
+                        <button onclick="clearParticles()" class="w-full py-2 px-2 bg-white border border-red-200 text-red-500 rounded text-xs hover:bg-red-50">
+                            Reset
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Questions -->
+            <div class="mt-4 px-4 py-2">
+                <div class="mb-4">
+                    <label class="block font-semibold text-slate-700 text-sm mb-1">1. Explain why the total volume changes when water and alcohol are mixed.</label>
+                    <textarea id="q1-answer" class="w-full p-2 border border-slate-300 rounded focus:ring-1 focus:ring-cyan-500 outline-none text-sm" rows="2"></textarea>
+                </div>
+                <div class="flex justify-between items-center">
+                    <div class="text-xs text-slate-400">Double-tap particles inside the container to delete them.</div>
+                    <button onclick="submitWork()" id="submit-btn" class="bg-cyan-600 text-white px-6 py-2 rounded font-bold shadow hover:bg-cyan-700 text-sm">
+                        Submit Work
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. TEACHER LOGIN -->
+    <div id="view-teacher-login" class="hidden-section min-h-screen flex items-center justify-center bg-slate-100 p-4">
+        <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+            <h2 class="text-2xl font-bold text-slate-800 mb-4">Teacher Access</h2>
+            <input type="password" id="teacher-password" class="w-full p-3 border border-slate-300 rounded mb-4" placeholder="Password: 123456">
+            <div class="flex justify-between items-center">
+                <button onclick="switchView('landing')" class="text-slate-500">Cancel</button>
+                <button onclick="checkTeacherPassword()" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">Login</button>
+            </div>
+            <p id="login-error" class="text-red-500 text-sm mt-4 hidden text-center">Incorrect password.</p>
+        </div>
+    </div>
+
+    <!-- 4. TEACHER DASHBOARD -->
+    <div id="view-teacher-dashboard" class="hidden-section min-h-screen bg-slate-50">
+        <div class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-20 shadow-sm">
+            <div>
+                <h1 class="text-xl font-bold text-slate-800">Teacher Dashboard</h1>
+                <p class="text-xs text-green-600 font-medium flex items-center gap-1">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Live Sync Active
+                </p>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="clearAllData()" class="text-red-600 bg-red-50 border border-red-200 px-3 py-1 rounded text-sm">Clear All</button>
+                <button onclick="switchView('landing')" class="bg-slate-800 text-white px-3 py-1 rounded text-sm">Logout</button>
+            </div>
+        </div>
+
+        <div class="p-6 max-w-7xl mx-auto">
+            <div id="submissions-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+            <div id="loading-submissions" class="flex justify-center mt-20"><div class="loader"></div></div>
+            <div id="no-data-msg" class="hidden text-center mt-20 text-slate-400">Waiting for submissions...</div>
+        </div>
+    </div>
+
+    <!-- MODAL -->
+    <div id="submission-modal" class="fixed inset-0 bg-black/60 hidden z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col">
+            <div class="p-4 border-b flex justify-between items-center bg-slate-50">
+                <h3 class="font-bold text-lg" id="modal-student-name">Student Work</h3>
+                <button onclick="closeModal()" class="text-2xl font-bold text-slate-400 hover:text-slate-600">&times;</button>
+            </div>
+            <div class="p-6 space-y-4" id="modal-content"></div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-3">
+                <button onclick="downloadPDF()" class="bg-indigo-600 text-white px-4 py-2 rounded text-sm">Download PDF</button>
+                <button onclick="closeModal()" class="bg-white border border-slate-300 px-4 py-2 rounded text-sm">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIC -->
+    <script>
+        // --- VIEW MANAGEMENT ---
+        let unsubscribeListener = null;
+
+        function switchView(viewName) {
+            document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden-section'));
+            document.getElementById(`view-${viewName}`).classList.remove('hidden-section');
+            
+            if (viewName === 'student') {
+                setTimeout(() => {
+                    resizeCanvas();
+                    initDragAndDrop(); // Initialize custom drag handlers
+                }, 200);
+            }
+            
+            if (viewName === 'teacher-dashboard') {
+                startRealtimeSync();
+            } else if (unsubscribeListener) {
+                unsubscribeListener();
+                unsubscribeListener = null;
+            }
+        }
+
+        function checkTeacherPassword() {
+            if (document.getElementById('teacher-password').value === '123456') {
+                switchView('teacher-dashboard');
+                document.getElementById('login-error').classList.add('hidden');
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        // --- MATTER.JS SETUP ---
+        const Engine = Matter.Engine, Render = Matter.Render, Runner = Matter.Runner, Bodies = Matter.Bodies, Composite = Matter.Composite, Mouse = Matter.Mouse, MouseConstraint = Matter.MouseConstraint, Query = Matter.Query;
+
+        const engine = Engine.create();
+        engine.world.gravity.y = 1; // Gravity on
+
+        const container = document.getElementById('canvas-wrapper');
+        const render = Render.create({
+            element: container,
+            engine: engine,
+            options: {
+                width: container.clientWidth,
+                height: container.clientHeight,
+                background: 'transparent',
+                wireframes: false,
+                pixelRatio: window.devicePixelRatio
+            }
+        });
+
+        // --- DRAWING THE CYLINDERS (WALLS) ---
+        let walls = [];
+        function buildWalls() {
+            Composite.remove(engine.world, walls);
+            walls = [];
+            
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            
+            // Positions based on image: Left (15%), Middle (45%), Right (85%)
+            // We draw "U" shapes using 3 thin rectangles
+            
+            const wallThick = 4;
+            const cylW = w * 0.12; // Width of one cylinder
+            const cylH = h * 0.6;  // Height
+            const floorY = h * 0.85; // Bottom position
+
+            const centers = [w * 0.15, w * 0.46, w * 0.82]; // X positions for 3 cylinders
+
+            centers.forEach(cx => {
+                const leftX = cx - cylW/2;
+                const rightX = cx + cylW/2;
+                
+                walls.push(
+                    // Left Wall
+                    Bodies.rectangle(leftX, floorY - cylH/2, wallThick, cylH, { isStatic: true, render: { fillStyle: '#334155' } }),
+                    // Right Wall
+                    Bodies.rectangle(rightX, floorY - cylH/2, wallThick, cylH, { isStatic: true, render: { fillStyle: '#334155' } }),
+                    // Bottom
+                    Bodies.rectangle(cx, floorY, cylW + wallThick, wallThick, { isStatic: true, render: { fillStyle: '#334155' } })
+                );
+            });
+
+            // Invisible floor to catch misses
+            walls.push(Bodies.rectangle(w/2, h + 50, w, 100, { isStatic: true }));
+
+            Composite.add(engine.world, walls);
+        }
+
+        // --- CUSTOM DRAG & DROP FOR IPAD ---
+        // This replaces HTML5 drag/drop which is buggy on iOS
+        function initDragAndDrop() {
+            const sources = document.querySelectorAll('.draggable-source');
+            
+            sources.forEach(src => {
+                // Support both Touch and Mouse
+                src.addEventListener('touchstart', handleStart, { passive: false });
+                src.addEventListener('mousedown', handleStart);
+            });
+        }
+
+        function handleStart(e) {
+            e.preventDefault(); // Stop scrolling
+            
+            const src = e.target;
+            const type = src.dataset.type;
+            const size = src.dataset.size;
+            
+            // Get pointer position
+            const point = e.touches ? e.touches[0] : e;
+            
+            // Create "Ghost" element
+            const ghost = document.createElement('div');
+            ghost.className = 'drag-proxy';
+            ghost.style.width = src.offsetWidth + 'px';
+            ghost.style.height = src.offsetHeight + 'px';
+            ghost.style.backgroundColor = getComputedStyle(src).backgroundColor;
+            ghost.style.borderRadius = '50%';
+            ghost.style.border = '1px solid #333';
+            
+            // Initial position
+            ghost.style.left = point.clientX + 'px';
+            ghost.style.top = point.clientY + 'px';
+            
+            document.body.appendChild(ghost);
+
+            // Move Handler
+            function onMove(evt) {
+                evt.preventDefault();
+                const mvPoint = evt.touches ? evt.touches[0] : evt;
+                ghost.style.left = mvPoint.clientX + 'px';
+                ghost.style.top = mvPoint.clientY + 'px';
+            }
+
+            // End Handler
+            function onEnd(evt) {
+                // Remove listeners
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onEnd);
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onEnd);
+
+                // Get final position
+                const endPoint = evt.changedTouches ? evt.changedTouches[0] : evt;
+                const rect = container.getBoundingClientRect();
+
+                // Check if dropped inside canvas
+                if (endPoint.clientX >= rect.left && endPoint.clientX <= rect.right &&
+                    endPoint.clientY >= rect.top && endPoint.clientY <= rect.bottom) {
+                    
+                    // Calculate Canvas Relative Coords
+                    const x = endPoint.clientX - rect.left;
+                    const y = endPoint.clientY - rect.top;
+                    
+                    spawnParticleInCanvas(x, y, type, size);
+                }
+
+                // Destroy ghost
+                ghost.remove();
+            }
+
+            // Attach global listeners for move/end
+            document.addEventListener('touchmove', onMove, { passive: false });
+            document.addEventListener('touchend', onEnd);
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onEnd);
+        }
+
+        function spawnParticleInCanvas(x, y, type, size) {
+            const color = type === 'water' ? '#67e8f9' : '#fde68a'; // Cyan / Amber
+            // Determine radius based on size
+            let r = size === 'large' ? 14 : 9;
+            
+            const p = Bodies.circle(x, y, r, {
+                restitution: 0.3,
+                friction: 0.05,
+                render: { fillStyle: color, strokeStyle: '#333', lineWidth: 1.5 }
+            });
+            Composite.add(engine.world, p);
+        }
+
+        // --- CANVAS INTERACTION ---
+        // MouseConstraint allows moving particles AFTER they are dropped
+        const mouse = Mouse.create(render.canvas);
+        const mouseConstraint = MouseConstraint.create(engine, {
+            mouse: mouse,
+            constraint: { stiffness: 0.2, render: { visible: false } }
+        });
+        render.mouse = mouse; // Sync mouse with render
+        Composite.add(engine.world, mouseConstraint);
+
+        Render.run(render);
+        const runner = Runner.create();
+        Runner.run(runner, engine);
+
+        // Resize Handler
+        function resizeCanvas() {
+            container.style.height = '100%'; // Ensure full height of parent
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            render.canvas.width = w;
+            render.canvas.height = h;
+            render.options.width = w;
+            render.options.height = h;
+            buildWalls();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // Double Click to Delete
+        container.addEventListener('dblclick', (e) => {
+            // Handle mouse double click
+            handleDelete(e.clientX, e.clientY);
+        });
+
+        // Double Tap logic for Touch
+        let lastTap = 0;
+        container.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTap;
+            if (tapLength < 300 && tapLength > 0) {
+                const touch = e.changedTouches[0];
+                handleDelete(touch.clientX, touch.clientY);
+                e.preventDefault();
+            }
+            lastTap = currentTime;
+        });
+
+        function handleDelete(clientX, clientY) {
+            const rect = render.canvas.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            const bodies = Composite.allBodies(engine.world);
+            const clicked = Query.point(bodies, { x, y });
+            for (let b of clicked) {
+                if (!b.isStatic) { Composite.remove(engine.world, b); break; }
+            }
+        }
+
+        window.clearParticles = () => {
+            const bodies = Composite.allBodies(engine.world).filter(b => !b.isStatic);
+            Composite.remove(engine.world, bodies);
+        };
+
+        // --- DATA SUBMISSION ---
+        async function submitWork() {
+            const name = document.getElementById('student-name').value.trim();
+            if (!name) return alert("Please enter your name.");
+            
+            const btn = document.getElementById('submit-btn');
+            btn.innerText = 'Uploading...';
+            btn.disabled = true;
+
+            try {
+                // Capture Canvas area
+                const element = document.getElementById('simulation-capture-area');
+                const canvas = await html2canvas(element, { scale: 2, useCORS: true });
+                const imgData = canvas.toDataURL('image/jpeg', 0.8);
+
+                // Upload Image
+                const storageRef = window.ref(window.storage, `submissions/${Date.now()}_${name}.jpg`);
+                await window.uploadString(storageRef, imgData, 'data_url');
+                const url = await window.getDownloadURL(storageRef);
+
+                // Save Data
+                await window.addDoc(window.collection(window.db, "submissions"), {
+                    studentName: name,
+                    imageUrl: url,
+                    q1: document.getElementById('q1-answer').value,
+                    timestamp: new Date()
+                });
+
+                alert("Submitted!");
+                switchView('landing');
+                clearParticles();
+                document.getElementById('student-name').value = '';
+                document.getElementById('q1-answer').value = '';
+            } catch (e) {
+                console.error(e);
+                alert("Error submitting: " + e.message);
+            } finally {
+                btn.innerText = 'Submit Work';
+                btn.disabled = false;
+            }
+        }
+
+        // --- TEACHER SYNC ---
+        function startRealtimeSync() {
+            const grid = document.getElementById('submissions-grid');
+            const loader = document.getElementById('loading-submissions');
+            const noData = document.getElementById('no-data-msg');
+
+            if (unsubscribeListener) return; // Already listening
+
+            loader.classList.remove('hidden');
+            grid.innerHTML = '';
+
+            const q = window.query(window.collection(window.db, "submissions"), window.orderBy("timestamp", "desc"));
+            
+            // REAL-TIME LISTENER
+            unsubscribeListener = window.onSnapshot(q, (snapshot) => {
+                loader.classList.add('hidden');
+                grid.innerHTML = '';
+                
+                if (snapshot.empty) {
+                    noData.classList.remove('hidden');
+                } else {
+                    noData.classList.add('hidden');
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        const card = document.createElement('div');
+                        card.className = "bg-white rounded-lg shadow hover:shadow-md transition cursor-pointer overflow-hidden border border-slate-200 flex flex-col";
+                        card.onclick = () => openModal(data);
+                        card.innerHTML = `
+                            <div class="h-40 bg-slate-100 overflow-hidden relative border-b">
+                                <img src="${data.imageUrl}" class="w-full h-full object-cover">
+                            </div>
+                            <div class="p-4">
+                                <h3 class="font-bold text-slate-800">${data.studentName}</h3>
+                                <p class="text-xs text-slate-500 mt-1">${data.timestamp ? new Date(data.timestamp.seconds*1000).toLocaleString() : ''}</p>
+                            </div>
+                        `;
+                        grid.appendChild(card);
+                    });
+                }
+            });
+        }
+
+        async function clearAllData() {
+            if(!confirm("Delete ALL submissions?")) return;
+            const q = window.query(window.collection(window.db, "submissions"));
+            const snapshot = await window.getDocs(q);
+            snapshot.forEach(doc => window.deleteDoc(doc.ref));
+        }
+
+        // --- MODAL ---
+        let currentData = null;
+        function openModal(data) {
+            currentData = data;
+            document.getElementById('modal-student-name').innerText = data.studentName;
+            document.getElementById('modal-content').innerHTML = `
+                <div id="pdf-target" class="space-y-4">
+                    <div class="border border-slate-200 rounded overflow-hidden">
+                        <img src="${data.imageUrl}" class="w-full">
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded border border-slate-100">
+                        <h4 class="font-bold text-xs text-slate-500 uppercase mb-1">Answer:</h4>
+                        <p class="text-slate-800">${data.q1 || "No answer."}</p>
+                    </div>
+                </div>
+            `;
+            document.getElementById('submission-modal').classList.remove('hidden');
+        }
+        function closeModal() { document.getElementById('submission-modal').classList.add('hidden'); }
+        
+        function downloadPDF() {
+            const el = document.getElementById('pdf-target');
+            html2pdf().set({ margin:0.5, filename: `${currentData.studentName}.pdf`, image:{type:'jpeg',quality:0.98}, html2canvas:{scale:2} }).from(el).save();
+        }
+    </script>
+</body>
+</html>
