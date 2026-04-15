@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Lenz's Law & Right-Hand Grip Rule Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            touch-action: manipulation;
+        }
+        #sim-svg {
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .draggable {
+            cursor: grab;
+        }
+        .draggable:active {
+            cursor: grabbing;
+        }
+        .fade-transition {
+            transition: opacity 0.2s ease-in-out;
+        }
+        .needle-transition {
+            transition: transform 0.1s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col">
+
+    <div class="container mx-auto px-4 py-6 max-w-5xl flex-grow flex flex-col">
+        <header class="mb-4 text-center">
+            <h1 class="text-3xl font-bold text-blue-700 mb-2">Lenz's Law Simulation</h1>
+            <p class="text-sm text-slate-600">Drag the magnet or solenoid, or use the auto-motion controls. Apply the Right-Hand Grip Rule to the front wires!</p>
+        </header>
+
+        <!-- Controls Panel -->
+        <div class="bg-white p-4 rounded-xl shadow-md border border-slate-200 mb-4 flex flex-col md:flex-row gap-4 items-center justify-between">
+            <div class="flex items-center gap-4 w-full md:w-auto">
+                <button id="btn-flip" class="bg-slate-800 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-sm w-full md:w-auto">
+                    Flip Magnet Polarity
+                </button>
+            </div>
+            
+            <div class="flex items-center gap-2 w-full md:w-auto bg-slate-100 p-2 rounded-lg border border-slate-200">
+                <label for="motion-select" class="text-sm font-semibold text-slate-700 whitespace-nowrap">Auto-Motion:</label>
+                <select id="motion-select" class="bg-white border border-slate-300 text-slate-700 text-sm rounded-md focus:ring-blue-500 focus:border-blue-500 block w-full p-2">
+                    <option value="mag-towards">Magnet Towards Solenoid</option>
+                    <option value="mag-away">Magnet Away from Solenoid</option>
+                    <option value="sol-towards">Solenoid Towards Magnet</option>
+                    <option value="sol-away">Solenoid Away from Magnet</option>
+                </select>
+                <button id="btn-run" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-md transition-colors shadow-sm">
+                    Run
+                </button>
+            </div>
+        </div>
+
+        <!-- Simulation Area (SVG) -->
+        <div class="bg-white rounded-xl shadow-lg mb-4 relative overflow-hidden border border-slate-200 flex justify-center items-center p-4">
+            <svg viewBox="0 0 800 300" width="100%" height="100%" id="sim-svg" class="max-w-full h-auto bg-slate-50 rounded-lg border border-slate-200">
+                <defs>
+                    <linearGradient id="coreGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#cbd5e1" />
+                        <stop offset="50%" stop-color="#94a3b8" />
+                        <stop offset="100%" stop-color="#64748b" />
+                    </linearGradient>
+                </defs>
+
+                <!-- Magnet Group -->
+                <g id="magnet-group" class="draggable" transform="translate(100, 80)">
+                    <rect x="2" y="32" width="120" height="60" fill="rgba(0,0,0,0.2)" rx="4"/>
+                    <rect id="mag-left-bg" x="0" y="30" width="60" height="60" fill="#ef4444" rx="4"/>
+                    <rect id="mag-right-bg" x="60" y="30" width="60" height="60" fill="#3b82f6" rx="4"/>
+                    <text id="mag-left-text" x="30" y="68" fill="white" font-size="24" font-weight="bold" text-anchor="middle">N</text>
+                    <text id="mag-right-text" x="90" y="68" fill="white" font-size="24" font-weight="bold" text-anchor="middle">S</text>
+                    <text x="60" y="105" fill="#64748b" font-size="10" font-weight="bold" text-anchor="middle">DRAG ME</text>
+                </g>
+
+                <!-- Solenoid & Circuit Group -->
+                <g id="solenoid-group" class="draggable" transform="translate(450, 80)">
+                    
+                    <!-- Circuit Wires -->
+                    <path d="M 15 80 L 15 180 L 57.5 180" stroke="#475569" stroke-width="4" fill="none"/>
+                    <path d="M 150 40 L 165 40 L 165 180 L 117.5 180" stroke="#475569" stroke-width="4" fill="none"/>
+                    
+                    <!-- Ammeter -->
+                    <circle cx="87.5" cy="180" r="30" fill="white" stroke="#334155" stroke-width="4"/>
+                    <text x="87.5" y="195" fill="#334155" font-size="20" font-weight="bold" text-anchor="middle">A</text>
+                    <line id="ammeter-needle" x1="87.5" y1="180" x2="87.5" y2="155" stroke="#dc2626" stroke-width="3" stroke-linecap="round" class="needle-transition" transform="rotate(0, 87.5, 180)"/>
+                    <line x1="87.5" y1="150" x2="87.5" y2="155" stroke="#94a3b8" stroke-width="2"/>
+                    <line x1="65" y1="158" x2="68" y2="162" stroke="#94a3b8" stroke-width="2"/>
+                    <line x1="110" y1="158" x2="107" y2="162" stroke="#94a3b8" stroke-width="2"/>
+
+                    <!-- Solenoid Core -->
+                    <rect x="0" y="40" width="175" height="40" fill="url(#coreGrad)" rx="5" stroke="#475569" stroke-width="2"/>
+                    
+                    <!-- Induced Poles Indicators -->
+                    <text id="ind-pole-left" x="-20" y="68" fill="#dc2626" font-size="28" font-weight="bold" text-anchor="middle" class="fade-transition" opacity="0">N</text>
+                    <text id="ind-pole-right" x="195" y="68" fill="#3b82f6" font-size="28" font-weight="bold" text-anchor="middle" class="fade-transition" opacity="0">S</text>
+
+                    <!-- Front Wires ONLY -->
+                    <path d="M 15 80 L 30 40" stroke="#d97706" stroke-width="6" fill="none" stroke-linecap="round"/>
+                    <path d="M 45 80 L 60 40" stroke="#d97706" stroke-width="6" fill="none" stroke-linecap="round"/>
+                    <path d="M 75 80 L 90 40" stroke="#d97706" stroke-width="6" fill="none" stroke-linecap="round"/>
+                    <path d="M 105 80 L 120 40" stroke="#d97706" stroke-width="6" fill="none" stroke-linecap="round"/>
+                    <path d="M 135 80 L 150 40" stroke="#d97706" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+                    <!-- Current Direction Arrows (Front Wires) -->
+                    <g id="arrows-up" class="fade-transition" opacity="0">
+                        <path d="M 18 65 L 22.5 55 L 28 61" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 48 65 L 52.5 55 L 58 61" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 78 65 L 82.5 55 L 88 61" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 108 65 L 112.5 55 L 118 61" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 138 65 L 142.5 55 L 148 61" stroke="#fef08a" stroke-width="3" fill="none"/>
+                    </g>
+                    <g id="arrows-down" class="fade-transition" opacity="0">
+                        <path d="M 17 55 L 22.5 65 L 27 59" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 47 55 L 52.5 65 L 57 59" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 77 55 L 82.5 65 L 87 59" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 107 55 L 112.5 65 L 117 59" stroke="#fef08a" stroke-width="3" fill="none"/>
+                        <path d="M 137 55 L 142.5 65 L 147 59" stroke="#fef08a" stroke-width="3" fill="none"/>
+                    </g>
+                    
+                    <text x="87.5" y="105" fill="#64748b" font-size="10" font-weight="bold" text-anchor="middle">DRAG ME</text>
+                </g>
+            </svg>
+        </div>
+
+        <!-- Data Recording Section -->
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="font-bold text-slate-700 text-lg">Observation Log</h3>
+            <button id="btn-record" class="bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded-lg transition-colors shadow-sm">
+                Record Current State
+            </button>
+        </div>
+        
+        <div class="bg-white rounded-xl shadow-md border border-slate-200 overflow-hidden flex-grow">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-600 text-xs md:text-sm uppercase tracking-wider">
+                            <th class="p-3 border-b">Trial</th>
+                            <th class="p-3 border-b">Facing Pole</th>
+                            <th class="p-3 border-b">Motion</th>
+                            <th class="p-3 border-b">Induced Pole (Near)</th>
+                            <th class="p-3 border-b">Current (Front Wires)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="data-table-body" class="text-sm text-slate-700">
+                        <!-- Data rows injected here -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="empty-state" class="p-6 text-center text-slate-400 italic">
+                No data recorded. Move the objects and click "Record Current State".
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Variables ---
+        let magnetFacingPole = 'S'; 
+        let magnetX = 100;
+        let solenoidX = 450;
+        let lastDistance = solenoidX - magnetX;
+        
+        let currentMotion = 'Stationary';
+        let inducedPoleNear = 'None';
+        let currentDir = 'None'; 
+        let trialCount = 0;
+
+        // --- DOM Elements ---
+        const svg = document.getElementById('sim-svg');
+        const magnetGroup = document.getElementById('magnet-group');
+        const solenoidGroup = document.getElementById('solenoid-group');
+        
+        const magLeftBg = document.getElementById('mag-left-bg');
+        const magRightBg = document.getElementById('mag-right-bg');
+        const magLeftText = document.getElementById('mag-left-text');
+        const magRightText = document.getElementById('mag-right-text');
+        
+        const indPoleLeft = document.getElementById('ind-pole-left');
+        const indPoleRight = document.getElementById('ind-pole-right');
+        const arrowsUp = document.getElementById('arrows-up');
+        const arrowsDown = document.getElementById('arrows-down');
+        const ammeterNeedle = document.getElementById('ammeter-needle');
+        
+        const btnFlip = document.getElementById('btn-flip');
+        const btnRun = document.getElementById('btn-run');
+        const btnRecord = document.getElementById('btn-record');
+        const motionSelect = document.getElementById('motion-select');
+        const dataTableBody = document.getElementById('data-table-body');
+        const emptyState = document.getElementById('empty-state');
+
+        // --- Flip Magnet ---
+        btnFlip.addEventListener('click', () => {
+            if (magnetFacingPole === 'S') {
+                magnetFacingPole = 'N';
+                magLeftBg.setAttribute('fill', '#3b82f6'); 
+                magLeftText.textContent = 'S';
+                magRightBg.setAttribute('fill', '#ef4444'); 
+                magRightText.textContent = 'N';
+            } else {
+                magnetFacingPole = 'S';
+                magLeftBg.setAttribute('fill', '#ef4444'); 
+                magLeftText.textContent = 'N';
+                magRightBg.setAttribute('fill', '#3b82f6'); 
+                magRightText.textContent = 'S';
+            }
+            evaluatePhysics(true); 
+        });
+
+        // --- Drag and Drop Logic ---
+        let activeDrag = null;
+        let startClientX = 0;
+        let startObjX = 0;
+
+        function getSVGCoordinates(e) {
+            let clientX = e.clientX;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+            }
+            const CTM = svg.getScreenCTM();
+            return (clientX - CTM.e) / CTM.a;
+        }
+
+        function startDrag(e, objType) {
+            e.preventDefault(); 
+            activeDrag = objType;
+            startClientX = getSVGCoordinates(e);
+            startObjX = objType === 'magnet' ? magnetX : solenoidX;
+        }
+
+        magnetGroup.addEventListener('mousedown', (e) => startDrag(e, 'magnet'));
+        magnetGroup.addEventListener('touchstart', (e) => startDrag(e, 'magnet'), {passive: false});
+        
+        solenoidGroup.addEventListener('mousedown', (e) => startDrag(e, 'solenoid'));
+        solenoidGroup.addEventListener('touchstart', (e) => startDrag(e, 'solenoid'), {passive: false});
+
+        window.addEventListener('mousemove', drag);
+        window.addEventListener('touchmove', drag, {passive: false});
+        
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+
+        function drag(e) {
+            if (!activeDrag) return;
+            e.preventDefault();
+            
+            const currentClientX = getSVGCoordinates(e);
+            const dx = currentClientX - startClientX;
+            let newX = startObjX + dx;
+
+            if (activeDrag === 'magnet') {
+                newX = Math.max(10, Math.min(newX, solenoidX - 140));
+                magnetX = newX;
+                magnetGroup.setAttribute('transform', `translate(${magnetX}, 80)`);
+            } else if (activeDrag === 'solenoid') {
+                newX = Math.max(magnetX + 140, Math.min(newX, 615)); 
+                solenoidX = newX;
+                solenoidGroup.setAttribute('transform', `translate(${solenoidX}, 80)`);
+            }
+            
+            evaluatePhysics();
+        }
+
+        function endDrag() {
+            // FIX: Only stop the simulation if we were actually dragging something.
+            // This prevents the "Record" button click from resetting the state to Stationary.
+            if (activeDrag) {
+                activeDrag = null;
+                handleStop();
+            }
+        }
+
+        // --- Physics Engine ---
+        let stopTimer;
+        
+        function evaluatePhysics(forceClear = false) {
+            const currentDistance = solenoidX - magnetX;
+            const deltaD = currentDistance - lastDistance;
+            
+            if (forceClear || Math.abs(deltaD) < 0.2) {
+                if (forceClear) {
+                    currentMotion = 'Stationary';
+                    inducedPoleNear = 'None';
+                    currentDir = 'None';
+                    hideVisuals();
+                }
+                return;
+            }
+
+            let isTowards = deltaD < 0;
+            currentMotion = isTowards ? 'Towards each other' : 'Away from each other';
+
+            // Lenz's Law
+            if (isTowards) {
+                inducedPoleNear = magnetFacingPole; // Repel
+            } else {
+                inducedPoleNear = magnetFacingPole === 'N' ? 'S' : 'N'; // Attract
+            }
+
+            const inducedPoleFar = inducedPoleNear === 'N' ? 'S' : 'N';
+
+            // Right-Hand Grip Rule (Fixed Direction)
+            if (inducedPoleNear === 'N') {
+                currentDir = 'Up';
+            } else {
+                currentDir = 'Down';
+            }
+
+            showVisuals(inducedPoleNear, inducedPoleFar, currentDir);
+            
+            lastDistance = currentDistance;
+            
+            clearTimeout(stopTimer);
+            stopTimer = setTimeout(handleStop, 150);
+        }
+
+        function showVisuals(nearPole, farPole, dir) {
+            indPoleLeft.textContent = nearPole;
+            indPoleLeft.setAttribute('fill', nearPole === 'N' ? '#dc2626' : '#3b82f6');
+            indPoleLeft.setAttribute('opacity', '1');
+
+            indPoleRight.textContent = farPole;
+            indPoleRight.setAttribute('fill', farPole === 'N' ? '#dc2626' : '#3b82f6');
+            indPoleRight.setAttribute('opacity', '1');
+
+            if (dir === 'Up') {
+                arrowsUp.setAttribute('opacity', '1');
+                arrowsDown.setAttribute('opacity', '0');
+                ammeterNeedle.setAttribute('transform', 'rotate(-30, 87.5, 180)'); // Deflect left
+            } else {
+                arrowsUp.setAttribute('opacity', '0');
+                arrowsDown.setAttribute('opacity', '1');
+                ammeterNeedle.setAttribute('transform', 'rotate(30, 87.5, 180)'); // Deflect right
+            }
+        }
+
+        function hideVisuals() {
+            indPoleLeft.setAttribute('opacity', '0');
+            indPoleRight.setAttribute('opacity', '0');
+            arrowsUp.setAttribute('opacity', '0');
+            arrowsDown.setAttribute('opacity', '0');
+            ammeterNeedle.setAttribute('transform', 'rotate(0, 87.5, 180)');
+            
+            currentMotion = 'Stationary';
+            inducedPoleNear = 'None';
+            currentDir = 'None';
+            lastDistance = solenoidX - magnetX;
+        }
+
+        const handleStop = () => {
+            hideVisuals();
+        };
+
+        // --- Auto-Run Animation ---
+        let isAnimating = false;
+
+        btnRun.addEventListener('click', () => {
+            if (isAnimating) return;
+            
+            const mode = motionSelect.value;
+            let targetX;
+            let step = 3;
+            let movingObj = '';
+
+            if (mode === 'mag-towards') {
+                movingObj = 'magnet';
+                targetX = solenoidX - 140;
+                step = Math.abs(step);
+            } else if (mode === 'mag-away') {
+                movingObj = 'magnet';
+                targetX = 10;
+                step = -Math.abs(step);
+            } else if (mode === 'sol-towards') {
+                movingObj = 'solenoid';
+                targetX = magnetX + 140;
+                step = -Math.abs(step);
+            } else if (mode === 'sol-away') {
+                movingObj = 'solenoid';
+                targetX = 615;
+                step = Math.abs(step);
+            }
+
+            isAnimating = true;
+            btnRun.disabled = true;
+            btnRun.classList.add('opacity-50', 'cursor-not-allowed');
+
+            function animate() {
+                let reachedTarget = false;
+
+                if (movingObj === 'magnet') {
+                    magnetX += step;
+                    if ((step > 0 && magnetX >= targetX) || (step < 0 && magnetX <= targetX)) {
+                        magnetX = targetX;
+                        reachedTarget = true;
+                    }
+                    magnetGroup.setAttribute('transform', `translate(${magnetX}, 80)`);
+                } else {
+                    solenoidX += step;
+                    if ((step > 0 && solenoidX >= targetX) || (step < 0 && solenoidX <= targetX)) {
+                        solenoidX = targetX;
+                        reachedTarget = true;
+                    }
+                    solenoidGroup.setAttribute('transform', `translate(${solenoidX}, 80)`);
+                }
+
+                evaluatePhysics();
+
+                if (!reachedTarget) {
+                    requestAnimationFrame(animate);
+                } else {
+                    isAnimating = false;
+                    btnRun.disabled = false;
+                    btnRun.classList.remove('opacity-50', 'cursor-not-allowed');
+                    setTimeout(handleStop, 100);
+                }
+            }
+            
+            animate();
+        });
+
+        // --- Data Recording ---
+        function recordData(motion, facing, pole, dir) {
+            trialCount++;
+            emptyState.style.display = 'none';
+
+            const row = document.createElement('tr');
+            row.className = 'border-b hover:bg-slate-50 transition-colors';
+            
+            let poleColor = facing === 'N' ? 'text-red-600' : 'text-blue-600';
+            let indPoleColor = pole === 'N' ? 'text-red-600' : (pole === 'S' ? 'text-blue-600' : 'text-slate-500');
+
+            row.innerHTML = `
+                <td class="p-3 font-semibold">${trialCount}</td>
+                <td class="p-3 font-bold ${poleColor}">${facing}</td>
+                <td class="p-3">${motion}</td>
+                <td class="p-3 font-bold ${indPoleColor}">${pole}</td>
+                <td class="p-3 font-semibold text-yellow-600">${dir}</td>
+            `;
+
+            dataTableBody.insertBefore(row, dataTableBody.firstChild);
+        }
+
+        btnRecord.addEventListener('click', () => {
+            recordData(currentMotion, magnetFacingPole, inducedPoleNear, currentDir);
+        });
+
+    </script>
+</body>
+</html>
