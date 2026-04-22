@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Burning of Iron Wool - Learning Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK (Modular via CDN) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDyIHBTALb6wAHteYG5gDy1JfKkCqS0q-g",
+            authDomain: "iron-wool-simulation.firebaseapp.com",
+            projectId: "iron-wool-simulation",
+            storageBucket: "iron-wool-simulation.firebasestorage.app",
+            messagingSenderId: "430295150256",
+            appId: "1:430295150256:web:1964282cc0104a26035575"
+        };
+
+        let app, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            window.db = db; 
+            window.firebaseModules = { collection, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot };
+        } catch (e) {
+            console.error("Firebase initialization error:", e);
+        }
+    </script>
+
+    <style>
+        body {
+            touch-action: none;
+            /* Added a subtle animated gradient background for the whole app */
+            background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+        
+        .particle {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            position: absolute;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 10;
+            transition: transform 0.1s;
+        }
+
+        .particle:active { cursor: grabbing; transform: scale(1.1); }
+        .particle-iron { background-color: #1a202c; border: 2px solid #1a202c; }
+        .particle-oxygen { background-color: #ffffff; border: 2px solid #1a202c; }
+        
+        .source-particle {
+            position: relative;
+            transform: none !important;
+            display: inline-block;
+            margin-left: 10px;
+            box-shadow: none;
+        }
+
+        .static-particle {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            position: absolute;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .view-section { display: none; }
+        .view-section.active { display: block; animation: fadeIn 0.4s ease-out; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        input[type="radio"], input[type="checkbox"] {
+            accent-color: #2563eb;
+            cursor: pointer;
+        }
+
+        /* Fixed Thumbnail Scaling CSS */
+        .thumb-container {
+            position: relative;
+            width: 100%;
+            /* 16:9 Aspect Ratio (450 / 800 = 56.25%) */
+            padding-top: 56.25%; 
+            overflow: hidden;
+            background-color: #ffffff;
+        }
+        .thumb-scale-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 800px;
+            height: 450px;
+            transform-origin: top left;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="text-slate-800 pb-10">
+
+    <!-- ROLE SELECTION VIEW (Enhanced Front Page) -->
+    <div id="view-role-selection" class="view-section active max-w-3xl mx-auto mt-12 p-10 bg-white/80 backdrop-blur-md rounded-3xl shadow-2xl text-center border border-white">
+        
+        <!-- Graphic Header -->
+        <div class="flex justify-center mb-6">
+            <div class="relative w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center shadow-inner">
+                <i class="fas fa-flask text-5xl text-blue-600"></i>
+                <div class="absolute -bottom-2 -right-2 w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center shadow-inner">
+                    <i class="fas fa-fire text-xl text-purple-600"></i>
+                </div>
+            </div>
+        </div>
+
+        <h1 class="text-4xl md:text-5xl font-extrabold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 tracking-tight">
+            Burning of Iron Wool
+        </h1>
+        <p class="mb-10 text-lg text-slate-600 font-medium max-w-xl mx-auto">
+            Explore the conservation of mass and chemical reactions in this interactive science simulation. Select your role to get started.
+        </p>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+            <!-- Student Button -->
+            <button onclick="switchView('view-student')" class="group relative flex flex-col items-center justify-center p-8 bg-gradient-to-br from-blue-50 to-blue-100 hover:from-blue-500 hover:to-blue-600 rounded-2xl transition-all duration-300 shadow-md hover:shadow-xl border border-blue-200 hover:border-transparent">
+                <i class="fas fa-user-graduate text-5xl text-blue-500 group-hover:text-white mb-4 transition-colors duration-300"></i>
+                <span class="text-2xl font-bold text-blue-900 group-hover:text-white transition-colors duration-300">Student</span>
+                <span class="text-sm text-blue-600/80 group-hover:text-blue-100 mt-2 transition-colors duration-300 font-medium">Enter the simulation</span>
+            </button>
+            
+            <!-- Teacher Button -->
+            <button onclick="switchView('view-teacher-login')" class="group relative flex flex-col items-center justify-center p-8 bg-gradient-to-br from-purple-50 to-purple-100 hover:from-purple-500 hover:to-purple-600 rounded-2xl transition-all duration-300 shadow-md hover:shadow-xl border border-purple-200 hover:border-transparent">
+                <i class="fas fa-chalkboard-teacher text-5xl text-purple-500 group-hover:text-white mb-4 transition-colors duration-300"></i>
+                <span class="text-2xl font-bold text-purple-900 group-hover:text-white transition-colors duration-300">Teacher</span>
+                <span class="text-sm text-purple-600/80 group-hover:text-purple-100 mt-2 transition-colors duration-300 font-medium">View live results</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- TEACHER LOGIN VIEW -->
+    <div id="view-teacher-login" class="view-section max-w-md mx-auto mt-20 p-8 bg-white rounded-2xl shadow-xl text-center border border-slate-100">
+        <div class="mb-6 text-purple-600">
+            <i class="fas fa-lock text-4xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold mb-6 text-slate-800">Teacher Access</h2>
+        <input type="password" id="teacher-password" placeholder="Enter Password" class="w-full border-2 border-slate-200 rounded-xl p-4 mb-6 focus:border-purple-500 outline-none transition-colors text-lg">
+        <div class="flex gap-4">
+            <button onclick="switchView('view-role-selection')" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 px-4 rounded-xl transition-colors">Cancel</button>
+            <button onclick="loginTeacher()" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-xl transition-colors shadow-md shadow-purple-200">Login</button>
+        </div>
+        <p id="login-error" class="text-red-500 mt-4 hidden font-medium"><i class="fas fa-exclamation-circle mr-1"></i> Incorrect password.</p>
+    </div>
+
+    <!-- STUDENT VIEW -->
+    <div id="view-student" class="view-section max-w-5xl mx-auto p-4 mt-4">
+        <div class="flex justify-between items-center mb-4">
+            <button onclick="switchView('view-role-selection')" class="text-blue-600 hover:text-blue-800 font-medium flex items-center transition-colors">
+                <i class="fas fa-arrow-left mr-2"></i> Back to Home
+            </button>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-wrap gap-4 student-controls">
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-bold text-slate-600 mb-2"><i class="fas fa-user mr-1"></i> Name</label>
+                <input type="text" id="student-name" class="w-full border-2 border-slate-200 rounded-lg p-3 outline-none focus:border-blue-500 transition-colors">
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-sm font-bold text-slate-600 mb-2"><i class="fas fa-users mr-1"></i> Class</label>
+                <input type="text" id="student-class" class="w-full border-2 border-slate-200 rounded-lg p-3 outline-none focus:border-blue-500 transition-colors">
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-sm font-bold text-slate-600 mb-2"><i class="fas fa-hashtag mr-1"></i> Class Number</label>
+                <input type="number" id="student-number" class="w-full border-2 border-slate-200 rounded-lg p-3 outline-none focus:border-blue-500 transition-colors">
+            </div>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 mb-6 p-6">
+            <h1 class="text-3xl font-bold tracking-tight mb-6 text-slate-800 flex items-center">
+                <i class="fas fa-flask text-blue-500 mr-3"></i> Burning of Iron wool
+            </h1>
+            
+            <!-- Fixed-size Canvas for perfect coordinate mapping -->
+            <div class="w-full overflow-x-auto pb-4">
+                <div id="simulation-canvas" style="width: 800px; height: 450px; position: relative; margin: 0 auto; background: #ffffff; border: 2px solid #e2e8f0; border-radius: 0.75rem; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                    
+                    <!-- Particle Sources -->
+                    <div class="absolute top-4 left-4 bg-white/90 backdrop-blur p-4 rounded-xl border border-slate-200 shadow-sm z-30 student-controls">
+                        <p class="text-sm text-slate-500 font-medium mb-3"><i class="fas fa-hand-pointer mr-1"></i> Drag particles to balances</p>
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="text-sm font-bold text-slate-700 mr-4">Oxygen Particle:</span>
+                            <div class="particle particle-oxygen source-particle" data-type="oxygen" onmousedown="startDragSource(event)" ontouchstart="startDragSource(event)"></div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-bold text-slate-700 mr-4">Iron Particle:</span>
+                            <div class="particle particle-iron source-particle" data-type="iron" onmousedown="startDragSource(event)" ontouchstart="startDragSource(event)"></div>
+                        </div>
+                    </div>
+
+                    <!-- Static Background Wrapper (Cloned for thumbnails) -->
+                    <div id="canvas-background" class="absolute inset-0 pointer-events-none z-0">
+                        <!-- Center Arrow -->
+                        <div class="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-6xl font-bold text-slate-200">&#10145;</div>
+
+                        <!-- Before Burning Section -->
+                        <div class="absolute" style="left: 80px; bottom: 50px; width: 200px; height: 100px;">
+                            <!-- Static Floating Oxygen -->
+                            <div class="absolute" style="top: -140px; left: 30%; z-index: 10;">
+                                <div class="absolute" style="top: 0px; left: -30px; transform: rotate(15deg);">
+                                    <div class="static-particle particle-oxygen" style="left: 0px;"></div>
+                                    <div class="static-particle particle-oxygen" style="left: 22px;"></div>
+                                </div>
+                                <div class="absolute" style="top: 40px; left: 30px; transform: rotate(-20deg);">
+                                    <div class="static-particle particle-oxygen" style="left: 0px;"></div>
+                                    <div class="static-particle particle-oxygen" style="left: 22px;"></div>
+                                </div>
+                                <div class="absolute" style="top: -20px; left: 60px; transform: rotate(45deg);">
+                                    <div class="static-particle particle-oxygen" style="left: 0px;"></div>
+                                    <div class="static-particle particle-oxygen" style="left: 22px;"></div>
+                                </div>
+                            </div>
+                            
+                            <!-- Static Iron on Pan -->
+                            <div class="absolute flex justify-center w-full" style="top: 6px; z-index: 10;">
+                                <div class="flex" style="gap: 1px;">
+                                    <div class="static-particle particle-iron" style="position: relative;"></div>
+                                    <div class="static-particle particle-iron" style="position: relative;"></div>
+                                    <div class="static-particle particle-iron" style="position: relative;"></div>
+                                    <div class="static-particle particle-iron" style="position: relative;"></div>
+                                    <div class="static-particle particle-iron" style="position: relative;"></div>
+                                    <div class="static-particle particle-iron" style="position: relative;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Balance Front (z-index 20 hides particles overlapping the base) -->
+                            <svg width="200" height="100" viewBox="0 0 200 100" class="absolute inset-0 z-20 pointer-events-none">
+                                <path d="M 10 20 Q 30 30 50 30 L 150 30 Q 170 30 190 20" fill="none" stroke="#0f172a" stroke-width="4"/>
+                                <rect x="65" y="30" width="8" height="20" fill="#0f172a" />
+                                <rect x="127" y="30" width="8" height="20" fill="#0f172a" />
+                                <path d="M 45 50 L 155 50 L 175 95 L 25 95 Z" fill="#ffffff" stroke="#0f172a" stroke-width="4"/>
+                                <path d="M 60 60 L 140 60 L 145 85 L 55 85 Z" fill="none" stroke="#0f172a" stroke-width="4"/>
+                            </svg>
+                            <h2 class="absolute -bottom-10 w-full text-center text-lg font-bold text-slate-700">Before burning</h2>
+                        </div>
+
+                        <!-- After Burning Section -->
+                        <div class="absolute" style="left: 520px; bottom: 50px; width: 200px; height: 100px;">
+                            <!-- Balance Front -->
+                            <svg width="200" height="100" viewBox="0 0 200 100" class="absolute inset-0 z-20 pointer-events-none">
+                                <path d="M 10 20 Q 30 30 50 30 L 150 30 Q 170 30 190 20" fill="none" stroke="#0f172a" stroke-width="4"/>
+                                <rect x="65" y="30" width="8" height="20" fill="#0f172a" />
+                                <rect x="127" y="30" width="8" height="20" fill="#0f172a" />
+                                <path d="M 45 50 L 155 50 L 175 95 L 25 95 Z" fill="#ffffff" stroke="#0f172a" stroke-width="4"/>
+                                <path d="M 60 60 L 140 60 L 145 85 L 55 85 Z" fill="none" stroke="#0f172a" stroke-width="4"/>
+                            </svg>
+                            <h2 class="absolute -bottom-10 w-full text-center text-lg font-bold text-slate-700">After burning</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Questions Area -->
+            <div class="mt-8 pt-8 border-t-2 border-slate-100 z-20 relative bg-white">
+                <h3 class="text-2xl font-bold mb-6 text-slate-800"><i class="fas fa-question-circle text-blue-500 mr-2"></i> Questions</h3>
+                
+                <div class="mb-8 bg-slate-50 p-6 rounded-xl border border-slate-100">
+                    <p class="font-bold text-lg mb-4 text-slate-800">Q1: How does the mass of the iron change after burning?</p>
+                    <div class="flex flex-wrap gap-8 ml-2">
+                        <label class="flex items-center gap-2 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="radio" name="q1" value="Increases" class="w-5 h-5"> Increases</label>
+                        <label class="flex items-center gap-2 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="radio" name="q1" value="Decreases" class="w-5 h-5"> Decreases</label>
+                        <label class="flex items-center gap-2 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="radio" name="q1" value="Remains the same" class="w-5 h-5"> Remains the same</label>
+                    </div>
+                </div>
+
+                <div class="mb-8 bg-slate-50 p-6 rounded-xl border border-slate-100">
+                    <p class="font-bold text-lg mb-4 text-slate-800">Q2: Which of the following best describes your reasoning? (You can choose more than one)</p>
+                    <div class="flex flex-col gap-4 ml-2">
+                        <label class="flex items-center gap-3 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="checkbox" name="q2" value="Iron particles leave the balance." class="w-5 h-5 rounded"> Iron particles leave the balance.</label>
+                        <label class="flex items-center gap-3 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="checkbox" name="q2" value="Oxygen particles stick to the iron particles." class="w-5 h-5 rounded"> Oxygen particles stick to the iron particles.</label>
+                        <label class="flex items-center gap-3 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="checkbox" name="q2" value="New substances are formed during burning." class="w-5 h-5 rounded"> New substances are formed during burning.</label>
+                        <label class="flex items-center gap-3 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="checkbox" name="q2" value="The total number of particles on the balance changes." class="w-5 h-5 rounded"> The total number of particles on the balance changes.</label>
+                        <label class="flex items-center gap-3 text-lg cursor-pointer hover:text-blue-600 transition-colors"><input type="checkbox" name="q2" value="The iron particles become larger." class="w-5 h-5 rounded"> The iron particles become larger.</label>
+                    </div>
+                </div>
+
+                <div class="mb-4 bg-slate-50 p-6 rounded-xl border border-slate-100">
+                    <p class="font-bold text-lg mb-4 text-slate-800">Q3: In your own words, explain why the mass of the iron changes after burning.</p>
+                    <textarea id="q3-answer" class="w-full border-2 border-slate-200 rounded-xl p-4 text-lg resize-none focus:border-blue-500 outline-none transition-colors" rows="4" placeholder="Type your explanation here..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6 flex justify-end student-controls">
+            <button onclick="submitStudentWork()" class="bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold py-3 px-10 rounded-xl shadow-lg shadow-green-200 text-lg transition-all transform hover:-translate-y-1 flex items-center">
+                <i class="fas fa-paper-plane mr-2"></i> Submit Work
+            </button>
+        </div>
+    </div>
+
+    <!-- TEACHER DASHBOARD -->
+    <div id="view-teacher-dashboard" class="view-section max-w-7xl mx-auto p-4 mt-10">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+            <div class="flex items-center gap-4">
+                <h1 class="text-3xl font-extrabold text-slate-800"><i class="fas fa-chalkboard-teacher text-purple-600 mr-2"></i> Live Class Submissions</h1>
+                <span class="flex items-center text-sm font-bold text-green-700 bg-green-100 border border-green-200 px-4 py-1.5 rounded-full shadow-sm">
+                    <span class="w-2.5 h-2.5 bg-green-500 rounded-full mr-2 animate-pulse"></span> Live Sync
+                </span>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="resetDatabase()" class="bg-white border border-red-200 hover:bg-red-50 text-red-600 font-bold py-2 px-5 rounded-lg shadow-sm transition-colors flex items-center">
+                    <i class="fas fa-trash-alt mr-2"></i> Reset Data
+                </button>
+                <button onclick="switchView('view-role-selection')" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-2 px-5 rounded-lg shadow-sm transition-colors flex items-center">
+                    <i class="fas fa-sign-out-alt mr-2"></i> Logout
+                </button>
+            </div>
+        </div>
+
+        <div id="teacher-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <!-- Populated by JS -->
+        </div>
+    </div>
+
+    <script>
+        let unsubscribeSync = null;
+
+        // ResizeObserver to perfectly scale the thumbnails on the teacher dashboard
+        const thumbResizeObserver = new ResizeObserver(entries => {
+            for (let entry of entries) {
+                const containerWidth = entry.contentRect.width;
+                // Calculate scale factor based on original 800px width
+                const scale = containerWidth / 800;
+                const wrapper = entry.target.querySelector('.thumb-scale-wrapper');
+                if (wrapper) {
+                    wrapper.style.transform = `scale(${scale})`;
+                }
+            }
+        });
+
+        function switchView(viewId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+            
+            if(viewId === 'view-teacher-dashboard') {
+                initTeacherSync();
+            } else {
+                if (unsubscribeSync) {
+                    unsubscribeSync();
+                    unsubscribeSync = null;
+                }
+                // Disconnect observer when leaving dashboard to save resources
+                thumbResizeObserver.disconnect();
+            }
+        }
+
+        function loginTeacher() {
+            const pwd = document.getElementById('teacher-password').value;
+            if (pwd === '123456') {
+                document.getElementById('login-error').classList.add('hidden');
+                document.getElementById('teacher-password').value = '';
+                switchView('view-teacher-dashboard');
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        const canvasArea = document.getElementById('simulation-canvas');
+        let activeParticle = null;
+        let offsetX = 0, offsetY = 0;
+        const PARTICLE_SIZE = 24, PARTICLE_RADIUS = 12;
+        let dynamicParticles = [];
+
+        // Universal coordinate extraction for touch and mouse
+        function getEventCoords(e) {
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            return { x: e.clientX, y: e.clientY };
+        }
+
+        function startDragSource(e) {
+            if(!e.target.closest('.student-controls')) return; 
+            if (e.type === 'touchstart') e.preventDefault();
+
+            const type = e.target.getAttribute('data-type');
+            const newParticle = document.createElement('div');
+            newParticle.className = `particle ${type === 'iron' ? 'particle-iron' : 'particle-oxygen'} dynamic-particle`;
+            newParticle.dataset.type = type;
+            newParticle.style.pointerEvents = 'auto';
+            
+            newParticle.addEventListener('mousedown', startDragExisting);
+            newParticle.addEventListener('touchstart', startDragExisting, { passive: false });
+            
+            newParticle.addEventListener('dblclick', (ev) => {
+                if(ev.target.bondedTo) {
+                    const idx = dynamicParticles.indexOf(ev.target.bondedTo);
+                    if(idx > -1) dynamicParticles.splice(idx, 1);
+                    ev.target.bondedTo.remove();
+                }
+                const idx = dynamicParticles.indexOf(ev.target);
+                if(idx > -1) dynamicParticles.splice(idx, 1);
+                ev.target.remove();
+            });
+            
+            canvasArea.appendChild(newParticle);
+            dynamicParticles.push(newParticle);
+
+            const rect = canvasArea.getBoundingClientRect();
+            const coords = getEventCoords(e);
+            
+            newParticle.style.left = (coords.x - rect.left - PARTICLE_RADIUS) + 'px';
+            newParticle.style.top = (coords.y - rect.top - PARTICLE_RADIUS) + 'px';
+
+            activeParticle = newParticle;
+            offsetX = PARTICLE_RADIUS; 
+            offsetY = PARTICLE_RADIUS;
+        }
+
+        function startDragExisting(e) {
+            if (e.type === 'touchstart') e.preventDefault();
+            activeParticle = e.target;
+            const rect = activeParticle.getBoundingClientRect();
+            const coords = getEventCoords(e);
+            offsetX = coords.x - rect.left;
+            offsetY = coords.y - rect.top;
+        }
+
+        function moveDrag(e) {
+            if (!activeParticle) return;
+            if (e.type === 'touchmove') e.preventDefault();
+
+            const rect = canvasArea.getBoundingClientRect();
+            const coords = getEventCoords(e);
+            
+            let newX = Math.max(0, Math.min(coords.x - rect.left - offsetX, rect.width - PARTICLE_SIZE));
+            let newY = Math.max(0, Math.min(coords.y - rect.top - offsetY, rect.height - PARTICLE_SIZE));
+
+            if ((newX > 90 && newX < 250) || (newX > 530 && newX < 690)) {
+                if (newY > 306) newY = 306;
+            }
+
+            const oldX = parseFloat(activeParticle.style.left) || newX;
+            const oldY = parseFloat(activeParticle.style.top) || newY;
+            
+            activeParticle.style.left = newX + 'px';
+            activeParticle.style.top = newY + 'px';
+
+            if (activeParticle.bondedTo) {
+                const dx = newX - oldX;
+                const dy = newY - oldY;
+                const bX = parseFloat(activeParticle.bondedTo.style.left) || 0;
+                const bY = parseFloat(activeParticle.bondedTo.style.top) || 0;
+                activeParticle.bondedTo.style.left = (bX + dx) + 'px';
+                activeParticle.bondedTo.style.top = (bY + dy) + 'px';
+            }
+
+            resolveCollisions(activeParticle);
+        }
+
+        function endDrag(e) {
+            if (activeParticle) {
+                checkBonding(activeParticle);
+                activeParticle = null;
+            }
+        }
+
+        window.addEventListener('mousemove', moveDrag, { passive: false });
+        window.addEventListener('touchmove', moveDrag, { passive: false });
+        window.addEventListener('mouseup', endDrag);
+        window.addEventListener('touchend', endDrag);
+
+        function resolveCollisions(particle) {
+            let px = parseFloat(particle.style.left);
+            let py = parseFloat(particle.style.top);
+
+            dynamicParticles.forEach(other => {
+                if (other === particle || other === particle.bondedTo) return;
+                
+                let ox = parseFloat(other.style.left);
+                let oy = parseFloat(other.style.top);
+                
+                let dx = px - ox;
+                let dy = py - oy;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < PARTICLE_SIZE) {
+                    const overlap = PARTICLE_SIZE - distance + 1;
+                    const angle = Math.atan2(dy, dx);
+                    px += Math.cos(angle) * overlap;
+                    py += Math.sin(angle) * overlap;
+                    
+                    particle.style.left = px + 'px';
+                    particle.style.top = py + 'px';
+                }
+            });
+        }
+
+        function checkBonding(particle) {
+            if (particle.dataset.type !== 'oxygen' || particle.bondedTo) return;
+
+            let px = parseFloat(particle.style.left);
+            let py = parseFloat(particle.style.top);
+
+            for (let other of dynamicParticles) {
+                if (other === particle || other.dataset.type !== 'oxygen' || other.bondedTo) continue;
+
+                let ox = parseFloat(other.style.left);
+                let oy = parseFloat(other.style.top);
+                let distance = Math.sqrt((px - ox)**2 + (py - oy)**2);
+
+                if (distance < PARTICLE_SIZE * 1.5) {
+                    particle.bondedTo = other;
+                    other.bondedTo = particle;
+                    
+                    other.style.left = (px + PARTICLE_SIZE - 2) + 'px';
+                    other.style.top = py + 'px';
+                    break;
+                }
+            }
+        }
+
+        async function submitStudentWork() {
+            if (!window.db) return alert("Firebase is not initialized. Please check your config and connection.");
+            
+            const name = document.getElementById('student-name').value;
+            const sClass = document.getElementById('student-class').value;
+            const sNum = document.getElementById('student-number').value;
+            
+            if(!name || !sClass || !sNum) return alert("Please fill in your Name, Class, and Class Number.");
+
+            const q1 = document.querySelector('input[name="q1"]:checked')?.value || "";
+            const q2 = Array.from(document.querySelectorAll('input[name="q2"]:checked')).map(cb => cb.value);
+            const q3 = document.getElementById('q3-answer').value;
+
+            const particles = Array.from(document.querySelectorAll('.dynamic-particle')).map(p => {
+                return {
+                    type: p.dataset.type,
+                    x: parseFloat(p.style.left) || 0,
+                    y: parseFloat(p.style.top) || 0
+                };
+            });
+
+            const data = {
+                student: { name, class: sClass, number: sNum },
+                answers: { q1, q2, q3 },
+                particles,
+                timestamp: window.firebaseModules.serverTimestamp()
+            };
+
+            try {
+                const colRef = window.firebaseModules.collection(window.db, "submissions");
+                await window.firebaseModules.addDoc(colRef, data);
+                alert("Work submitted successfully!");
+                switchView('view-role-selection');
+                
+                document.getElementById('student-name').value = '';
+                document.getElementById('student-class').value = '';
+                document.getElementById('student-number').value = '';
+                document.getElementById('q3-answer').value = '';
+                document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(i => i.checked = false);
+                document.querySelectorAll('.dynamic-particle').forEach(p => p.remove());
+                dynamicParticles = [];
+            } catch (e) {
+                console.error(e);
+                alert("Error submitting work.");
+            }
+        }
+
+        let allSubmissions = [];
+
+        function initTeacherSync() {
+            if (!window.db) return;
+            const grid = document.getElementById('teacher-grid');
+            grid.innerHTML = '<div class="col-span-full text-center p-12 text-slate-500 font-medium"><i class="fas fa-spinner fa-spin text-2xl mb-3"></i><br>Connecting to live feed...</div>';
+            
+            const colRef = window.firebaseModules.collection(window.db, "submissions");
+            
+            unsubscribeSync = window.firebaseModules.onSnapshot(colRef, (snapshot) => {
+                allSubmissions = [];
+                snapshot.forEach(doc => allSubmissions.push({ id: doc.id, ...doc.data() }));
+                
+                allSubmissions.sort((a, b) => {
+                    const tA = a.timestamp ? a.timestamp.toMillis() : 0;
+                    const tB = b.timestamp ? b.timestamp.toMillis() : 0;
+                    return tB - tA;
+                });
+
+                renderTeacherGrid();
+            }, (error) => {
+                console.error("Sync error:", error);
+                grid.innerHTML = '<div class="col-span-full text-center p-12 text-red-500 font-medium"><i class="fas fa-exclamation-triangle text-2xl mb-3"></i><br>Error syncing data.</div>';
+            });
+        }
+
+        function renderTeacherGrid() {
+            const grid = document.getElementById('teacher-grid');
+            
+            // Disconnect old observers before re-rendering
+            thumbResizeObserver.disconnect();
+            grid.innerHTML = '';
+            
+            if(allSubmissions.length === 0) {
+                grid.innerHTML = '<div class="col-span-full text-center p-16 text-slate-500 bg-white rounded-2xl border border-slate-200 shadow-sm"><i class="fas fa-inbox text-4xl mb-4 text-slate-300"></i><br>No submissions yet. Waiting for students...</div>';
+                return;
+            }
+
+            allSubmissions.forEach(sub => {
+                const dateStr = sub.timestamp ? new Date(sub.timestamp.toDate()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'N/A';
+                
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-2xl shadow-md hover:shadow-lg border border-slate-200 overflow-hidden flex flex-col transition-shadow";
+                
+                // Container for the scaled thumbnail
+                const thumbContainer = document.createElement('div');
+                thumbContainer.className = "thumb-container border-b border-slate-200";
+                
+                // The 800x450 wrapper that gets scaled down via JS ResizeObserver
+                const scaleWrapper = document.createElement('div');
+                scaleWrapper.className = "thumb-scale-wrapper";
+
+                // Clone the background elements from the main canvas
+                const bgClone = document.getElementById('canvas-background').cloneNode(true);
+                bgClone.id = ''; 
+                scaleWrapper.appendChild(bgClone);
+                
+                // Add the student's dynamic particles to the scaled wrapper
+                if(sub.particles && sub.particles.length > 0) {
+                    sub.particles.forEach(pData => {
+                        const p = document.createElement('div');
+                        p.className = `particle ${pData.type === 'iron' ? 'particle-iron' : 'particle-oxygen'}`;
+                        p.style.left = `${pData.x}px`;
+                        p.style.top = `${pData.y}px`;
+                        p.style.position = 'absolute';
+                        scaleWrapper.appendChild(p);
+                    });
+                } else {
+                    const noP = document.createElement('div');
+                    noP.className = "absolute inset-0 flex items-center justify-center text-slate-500 font-medium z-50 bg-white/80 backdrop-blur-sm";
+                    noP.innerHTML = "<i class='fas fa-info-circle mr-2'></i> No particles added";
+                    scaleWrapper.appendChild(noP);
+                }
+
+                thumbContainer.appendChild(scaleWrapper);
+
+                const infoContainer = document.createElement('div');
+                infoContainer.className = "p-5 flex flex-col flex-grow";
+                infoContainer.innerHTML = `
+                    <div class="flex justify-between items-start mb-1">
+                        <h3 class="font-bold text-xl text-slate-800 truncate pr-2">${sub.student.name || 'Unknown'}</h3>
+                        <span class="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded whitespace-nowrap">${dateStr}</span>
+                    </div>
+                    <p class="text-sm font-medium text-slate-500 mb-5"><i class="fas fa-users mr-1"></i> Class ${sub.student.class} &bull; No. ${sub.student.number}</p>
+                    <button onclick="viewSubmission('${sub.id}')" class="mt-auto w-full bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white border border-blue-200 hover:border-transparent font-bold py-2.5 px-4 rounded-xl transition-colors flex justify-center items-center">
+                        <i class="fas fa-search-plus mr-2"></i> View Full Details
+                    </button>
+                `;
+
+                card.appendChild(thumbContainer);
+                card.appendChild(infoContainer);
+                grid.appendChild(card);
+
+                // Observe the container to scale the wrapper perfectly
+                thumbResizeObserver.observe(thumbContainer);
+            });
+        }
+
+        function viewSubmission(id) {
+            const sub = allSubmissions.find(s => s.id === id);
+            if(!sub) return;
+            
+            document.getElementById('student-name').value = sub.student.name;
+            document.getElementById('student-class').value = sub.student.class;
+            document.getElementById('student-number').value = sub.student.number;
+            
+            document.querySelectorAll('input[name="q1"]').forEach(r => r.checked = (r.value === sub.answers.q1));
+            document.querySelectorAll('input[name="q2"]').forEach(cb => cb.checked = sub.answers.q2.includes(cb.value));
+            document.getElementById('q3-answer').value = sub.answers.q3;
+
+            document.querySelectorAll('.dynamic-particle').forEach(p => p.remove());
+            dynamicParticles = [];
+            
+            sub.particles.forEach(pData => {
+                const p = document.createElement('div');
+                p.className = `particle ${pData.type === 'iron' ? 'particle-iron' : 'particle-oxygen'} dynamic-particle`;
+                p.style.left = `${pData.x}px`;
+                p.style.top = `${pData.y}px`;
+                p.style.pointerEvents = 'none';
+                canvasArea.appendChild(p);
+            });
+
+            document.querySelectorAll('.student-controls').forEach(el => el.style.display = 'none');
+            switchView('view-student');
+            
+            const backBtn = document.createElement('button');
+            backBtn.id = "teacher-back-btn";
+            backBtn.className = "bg-slate-800 hover:bg-slate-900 text-white font-bold px-6 py-3 rounded-xl mt-6 shadow-lg flex items-center transition-colors";
+            backBtn.innerHTML = "<i class='fas fa-arrow-left mr-2'></i> Back to Live Dashboard";
+            backBtn.onclick = () => {
+                document.querySelectorAll('.student-controls').forEach(el => el.style.display = '');
+                document.querySelectorAll('.dynamic-particle').forEach(p => p.remove());
+                backBtn.remove();
+                switchView('view-teacher-dashboard');
+            };
+            canvasArea.parentElement.parentElement.appendChild(backBtn);
+        }
+
+        async function resetDatabase() {
+            if(!confirm("Are you sure you want to delete ALL submissions? This cannot be undone.")) return;
+            try {
+                for (const sub of allSubmissions) {
+                    await window.firebaseModules.deleteDoc(window.firebaseModules.doc(window.db, "submissions", sub.id));
+                }
+                alert("Database reset successful.");
+            } catch (e) {
+                alert("Error resetting database.");
+            }
+        }
+    </script>
+</body>
+</html>
