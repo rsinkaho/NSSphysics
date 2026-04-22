@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Burning of Iron Wool - Learning Platform</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <!-- Firebase SDK (Modular via CDN) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         // =========================================================================
         // FIREBASE CONFIGURATION
@@ -30,7 +29,7 @@
             app = initializeApp(firebaseConfig);
             db = getFirestore(app);
             window.db = db; // Make db available globally for our functions
-            window.firebaseModules = { collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp };
+            window.firebaseModules = { collection, addDoc, deleteDoc, doc, serverTimestamp, onSnapshot };
             console.log("Firebase initialized successfully.");
         } catch (e) {
             console.error("Firebase initialization error:", e);
@@ -92,6 +91,14 @@
             accent-color: #2563eb;
             cursor: pointer;
         }
+
+        /* Thumbnail specific styles */
+        .thumb-particle {
+            position: absolute;
+            border-radius: 50%;
+        }
+        .thumb-iron { background-color: #1a202c; border: 1px solid #1a202c; }
+        .thumb-oxygen { background-color: #ffffff; border: 1px solid #1a202c; }
     </style>
 </head>
 <body class="text-slate-800 pb-10">
@@ -124,7 +131,7 @@
         </div>
 
         <!-- Student Info Form -->
-        <div class="bg-white p-6 rounded-xl shadow-sm border-2 border-slate-200 mb-6 flex flex-wrap gap-4">
+        <div class="bg-white p-6 rounded-xl shadow-sm border-2 border-slate-200 mb-6 flex flex-wrap gap-4 student-controls">
             <div class="flex-1 min-w-[200px]">
                 <label class="block text-sm font-semibold mb-1">Name</label>
                 <input type="text" id="student-name" class="w-full border-2 border-slate-300 rounded p-2 outline-none focus:border-blue-500">
@@ -156,24 +163,33 @@
                 </div>
             </div>
 
-            <div class="absolute left-1/2 top-[250px] transform -translate-x-1/2 -translate-y-1/2 text-7xl font-bold text-slate-300">&#10145;</div>
+            <div class="absolute left-1/2 top-[250px] transform -translate-x-1/2 -translate-y-1/2 text-7xl font-bold text-slate-900">&#10145;</div>
 
-            <div class="flex justify-between items-end mt-32 px-10 mb-16">
+            <div class="flex justify-between items-end mt-32 px-10 mb-16 relative">
                 <!-- Before Burning -->
                 <div class="flex flex-col items-center w-1/2 relative">
-                    <div class="absolute" style="top: -120px; left: 30%;">
-                        <div class="absolute" style="top: 0px; left: -40px; transform: rotate(15deg);">
+                    <!-- 3 Pairs of Oxygen -->
+                    <div class="absolute" style="top: -140px; left: 30%;">
+                        <div class="absolute" style="top: 0px; left: -30px; transform: rotate(15deg);">
                             <div class="static-particle particle-oxygen" style="left: 0px;"></div>
-                            <div class="static-particle particle-oxygen" style="left: 20px;"></div>
+                            <div class="static-particle particle-oxygen" style="left: 22px;"></div>
                         </div>
-                        <div class="absolute" style="top: 40px; left: 20px; transform: rotate(-20deg);">
+                        <div class="absolute" style="top: 40px; left: 30px; transform: rotate(-20deg);">
                             <div class="static-particle particle-oxygen" style="left: 0px;"></div>
-                            <div class="static-particle particle-oxygen" style="left: 20px;"></div>
+                            <div class="static-particle particle-oxygen" style="left: 22px;"></div>
+                        </div>
+                        <div class="absolute" style="top: -20px; left: 60px; transform: rotate(45deg);">
+                            <div class="static-particle particle-oxygen" style="left: 0px;"></div>
+                            <div class="static-particle particle-oxygen" style="left: 22px;"></div>
                         </div>
                     </div>
+                    
                     <div class="scale-container">
+                        <!-- 6 Iron Particles -->
                         <div class="absolute flex justify-center w-full" style="top: 6px; z-index: 6;">
                             <div class="flex" style="gap: 1px;">
+                                <div class="static-particle particle-iron" style="position: relative;"></div>
+                                <div class="static-particle particle-iron" style="position: relative;"></div>
                                 <div class="static-particle particle-iron" style="position: relative;"></div>
                                 <div class="static-particle particle-iron" style="position: relative;"></div>
                                 <div class="static-particle particle-iron" style="position: relative;"></div>
@@ -192,9 +208,10 @@
                 </div>
 
                 <!-- After Burning -->
-                <div class="flex flex-col items-center w-1/2" id="after-burning-container">
-                    <div class="scale-container" id="apparatus-hitbox">
-                        <svg width="200" height="100" viewBox="0 0 200 100" class="absolute inset-0 z-0">
+                <div class="flex flex-col items-center w-1/2 relative" id="after-burning-container">
+                    <!-- Expanded Hitbox to prevent placing ON the balance -->
+                    <div class="scale-container" id="apparatus-hitbox" style="margin-top: -50px; height: 150px;">
+                        <svg width="200" height="100" viewBox="0 0 200 100" class="absolute bottom-0 z-0">
                             <path d="M 10 20 Q 30 30 50 30 L 150 30 Q 170 30 190 20" fill="none" stroke="#0f172a" stroke-width="4"/>
                             <rect x="65" y="30" width="8" height="20" fill="#0f172a" />
                             <rect x="127" y="30" width="8" height="20" fill="#0f172a" />
@@ -243,40 +260,40 @@
     </div>
 
     <!-- TEACHER DASHBOARD -->
-    <div id="view-teacher-dashboard" class="view-section max-w-6xl mx-auto p-4 mt-10">
+    <div id="view-teacher-dashboard" class="view-section max-w-7xl mx-auto p-4 mt-10">
         <div class="flex justify-between items-center mb-8">
-            <h1 class="text-3xl font-bold">Teacher Dashboard</h1>
+            <div class="flex items-center gap-4">
+                <h1 class="text-3xl font-bold">Live Class Submissions</h1>
+                <span class="flex items-center text-sm font-semibold text-green-600 bg-green-100 px-3 py-1 rounded-full">
+                    <span class="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span> Live Sync Active
+                </span>
+            </div>
             <div class="flex gap-4">
-                <button onclick="exportAllPDF()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">Export All to PDF</button>
                 <button onclick="resetDatabase()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow">Reset Database</button>
                 <button onclick="switchView('view-role-selection')" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded shadow">Logout</button>
             </div>
         </div>
 
-        <div class="bg-white rounded-xl shadow overflow-hidden">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="bg-slate-100 border-b-2 border-slate-200">
-                        <th class="p-4 font-semibold">Class</th>
-                        <th class="p-4 font-semibold">No.</th>
-                        <th class="p-4 font-semibold">Name</th>
-                        <th class="p-4 font-semibold">Submission Time</th>
-                        <th class="p-4 font-semibold">Action</th>
-                    </tr>
-                </thead>
-                <tbody id="student-list-body">
-                    <!-- Populated by JS -->
-                </tbody>
-            </table>
+        <!-- Grid Layout for Submissions -->
+        <div id="teacher-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Populated by JS -->
         </div>
     </div>
 
     <script>
         // --- View Management ---
+        let unsubscribeSync = null;
+
         function switchView(viewId) {
             document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
             document.getElementById(viewId).classList.add('active');
-            if(viewId === 'view-teacher-dashboard') loadTeacherData();
+            
+            if(viewId === 'view-teacher-dashboard') {
+                initTeacherSync();
+            } else if (unsubscribeSync) {
+                unsubscribeSync(); // Stop listening when leaving dashboard
+                unsubscribeSync = null;
+            }
         }
 
         function loginTeacher() {
@@ -309,7 +326,6 @@
             
             newParticle.addEventListener('pointerdown', startDragExisting);
             newParticle.addEventListener('dblclick', (ev) => {
-                // If bonded, remove both
                 if(ev.target.bondedTo) {
                     const idx = dynamicParticles.indexOf(ev.target.bondedTo);
                     if(idx > -1) dynamicParticles.splice(idx, 1);
@@ -355,14 +371,12 @@
             let newX = Math.max(0, Math.min(clientX - rect.left - offsetX, rect.width - PARTICLE_SIZE));
             let newY = Math.max(0, Math.min(clientY - rect.top - offsetY, rect.height - PARTICLE_SIZE));
 
-            // Move the active particle
             const oldX = parseFloat(activeParticle.style.left) || newX;
             const oldY = parseFloat(activeParticle.style.top) || newY;
             
             activeParticle.style.left = newX + 'px';
             activeParticle.style.top = newY + 'px';
 
-            // If it's bonded to another particle, move the bonded one by the same delta
             if (activeParticle.bondedTo) {
                 const dx = newX - oldX;
                 const dy = newY - oldY;
@@ -399,22 +413,15 @@
             let px = parseFloat(particle.style.left);
             let py = parseFloat(particle.style.top);
 
-            // 1. Prevent overlapping with the apparatus (simple bounding box push-out)
+            // 1. Prevent overlapping with the apparatus (Block placement ON the balance)
             if (px > appBox.left && px < appBox.right && py > appBox.top && py < appBox.bottom) {
-                // Find nearest edge to push out
-                const distLeft = Math.abs(px - appBox.left);
-                const distRight = Math.abs(px - appBox.right);
-                const distTop = Math.abs(py - appBox.top);
-                const distBottom = Math.abs(py - appBox.bottom);
-                const min = Math.min(distLeft, distRight, distTop, distBottom);
-
-                if (min === distLeft) px = appBox.left;
-                else if (min === distRight) px = appBox.right;
-                else if (min === distTop) py = appBox.top;
-                else if (min === distBottom) py = appBox.bottom;
-                
-                particle.style.left = px + 'px';
+                // Force particle above the apparatus
+                py = appBox.top;
                 particle.style.top = py + 'px';
+                
+                if (particle.bondedTo) {
+                    particle.bondedTo.style.top = py + 'px';
+                }
             }
 
             // 2. Prevent overlapping with other particles
@@ -429,7 +436,6 @@
                 let distance = Math.sqrt(dx * dx + dy * dy);
                 
                 if (distance < PARTICLE_SIZE) {
-                    // Push the active particle away
                     const overlap = PARTICLE_SIZE - distance + 1;
                     const angle = Math.atan2(dy, dx);
                     px += Math.cos(angle) * overlap;
@@ -454,12 +460,10 @@
                 let oy = parseFloat(other.style.top);
                 let distance = Math.sqrt((px - ox)**2 + (py - oy)**2);
 
-                // If close enough, snap and bond them together (O2 molecule)
                 if (distance < PARTICLE_SIZE * 1.5) {
                     particle.bondedTo = other;
                     other.bondedTo = particle;
                     
-                    // Snap to be exactly touching horizontally
                     other.style.left = (px + PARTICLE_SIZE - 2) + 'px';
                     other.style.top = py + 'px';
                     break;
@@ -481,10 +485,14 @@
             const q2 = Array.from(document.querySelectorAll('input[name="q2"]:checked')).map(cb => cb.value);
             const q3 = document.getElementById('q3-answer').value;
 
+            // Save positions as percentages relative to exportArea to render thumbnails correctly
+            const rect = exportArea.getBoundingClientRect();
             const particles = Array.from(document.querySelectorAll('.dynamic-particle')).map(p => ({
                 type: p.dataset.type,
-                x: p.style.left,
-                y: p.style.top
+                xPct: (parseFloat(p.style.left) / rect.width) * 100,
+                yPct: (parseFloat(p.style.top) / rect.height) * 100,
+                xRaw: p.style.left,
+                yRaw: p.style.top
             }));
 
             const data = {
@@ -516,42 +524,79 @@
 
         let allSubmissions = [];
 
-        async function loadTeacherData() {
+        function initTeacherSync() {
             if (!window.db) return;
-            const tbody = document.getElementById('student-list-body');
-            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center">Loading...</td></tr>';
+            const grid = document.getElementById('teacher-grid');
+            grid.innerHTML = '<div class="col-span-full text-center p-8 text-slate-500">Connecting to live feed...</div>';
             
-            try {
-                const colRef = window.firebaseModules.collection(window.db, "submissions");
-                const snapshot = await window.firebaseModules.getDocs(colRef);
+            const colRef = window.firebaseModules.collection(window.db, "submissions");
+            
+            // Listen for real-time updates
+            unsubscribeSync = window.firebaseModules.onSnapshot(colRef, (snapshot) => {
                 allSubmissions = [];
                 snapshot.forEach(doc => allSubmissions.push({ id: doc.id, ...doc.data() }));
                 
-                tbody.innerHTML = '';
-                if(allSubmissions.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">No submissions yet.</td></tr>';
-                    return;
+                // Sort by timestamp descending
+                allSubmissions.sort((a, b) => {
+                    const tA = a.timestamp ? a.timestamp.toMillis() : 0;
+                    const tB = b.timestamp ? b.timestamp.toMillis() : 0;
+                    return tB - tA;
+                });
+
+                renderTeacherGrid();
+            }, (error) => {
+                console.error("Sync error:", error);
+                grid.innerHTML = '<div class="col-span-full text-center p-8 text-red-500">Error syncing data.</div>';
+            });
+        }
+
+        function renderTeacherGrid() {
+            const grid = document.getElementById('teacher-grid');
+            grid.innerHTML = '';
+            
+            if(allSubmissions.length === 0) {
+                grid.innerHTML = '<div class="col-span-full text-center p-8 text-slate-500 bg-white rounded-xl border border-slate-200">No submissions yet. Waiting for students...</div>';
+                return;
+            }
+
+            allSubmissions.forEach(sub => {
+                const dateStr = sub.timestamp ? new Date(sub.timestamp.toDate()).toLocaleTimeString() : 'N/A';
+                
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col";
+                
+                // Thumbnail Area
+                const thumbContainer = document.createElement('div');
+                thumbContainer.className = "relative bg-slate-50 w-full h-48 border-b border-slate-200 overflow-hidden";
+                
+                // Draw mini particles based on percentages
+                if(sub.particles && sub.particles.length > 0) {
+                    sub.particles.forEach(pData => {
+                        const p = document.createElement('div');
+                        p.className = `thumb-particle ${pData.type === 'iron' ? 'thumb-iron' : 'thumb-oxygen'}`;
+                        p.style.width = '8px';
+                        p.style.height = '8px';
+                        p.style.left = `${pData.xPct}%`;
+                        p.style.top = `${pData.yPct}%`;
+                        thumbContainer.appendChild(p);
+                    });
+                } else {
+                    thumbContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center text-slate-400 text-sm">No particles added</div>';
                 }
 
-                allSubmissions.forEach(sub => {
-                    const tr = document.createElement('tr');
-                    tr.className = "border-b border-slate-100 hover:bg-slate-50";
-                    const dateStr = sub.timestamp ? new Date(sub.timestamp.toDate()).toLocaleString() : 'N/A';
-                    tr.innerHTML = `
-                        <td class="p-4">${sub.student.class}</td>
-                        <td class="p-4">${sub.student.number}</td>
-                        <td class="p-4">${sub.student.name}</td>
-                        <td class="p-4">${dateStr}</td>
-                        <td class="p-4">
-                            <button onclick="viewSubmission('${sub.id}')" class="text-blue-600 hover:underline">View Details</button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            } catch (e) {
-                console.error(e);
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500">Error loading data.</td></tr>';
-            }
+                // Info Area
+                const infoContainer = document.createElement('div');
+                infoContainer.className = "p-4 flex flex-col flex-grow";
+                infoContainer.innerHTML = `
+                    <h3 class="font-bold text-lg text-slate-800 truncate">${sub.student.name || 'Unknown'}</h3>
+                    <p class="text-sm text-slate-500 mb-4">${sub.student.class} - No. ${sub.student.number} &bull; ${dateStr}</p>
+                    <button onclick="viewSubmission('${sub.id}')" class="mt-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition self-start">View Full</button>
+                `;
+
+                card.appendChild(thumbContainer);
+                card.appendChild(infoContainer);
+                grid.appendChild(card);
+            });
         }
 
         function viewSubmission(id) {
@@ -572,8 +617,8 @@
             sub.particles.forEach(pData => {
                 const p = document.createElement('div');
                 p.className = `particle ${pData.type === 'iron' ? 'particle-iron' : 'particle-oxygen'} dynamic-particle`;
-                p.style.left = pData.x;
-                p.style.top = pData.y;
+                p.style.left = pData.xRaw;
+                p.style.top = pData.yRaw;
                 p.style.pointerEvents = 'none'; // Read only
                 exportArea.appendChild(p);
             });
@@ -583,8 +628,8 @@
             
             const backBtn = document.createElement('button');
             backBtn.id = "teacher-back-btn";
-            backBtn.className = "bg-slate-800 text-white px-4 py-2 rounded mt-4";
-            backBtn.innerText = "Back to Dashboard";
+            backBtn.className = "bg-slate-800 hover:bg-slate-900 text-white font-bold px-6 py-3 rounded-lg mt-4 shadow-lg";
+            backBtn.innerText = "← Back to Live Dashboard";
             backBtn.onclick = () => {
                 document.querySelectorAll('.student-controls').forEach(el => el.style.display = '');
                 document.querySelectorAll('.dynamic-particle').forEach(p => p.remove());
@@ -601,15 +646,9 @@
                     await window.firebaseModules.deleteDoc(window.firebaseModules.doc(window.db, "submissions", sub.id));
                 }
                 alert("Database reset successful.");
-                loadTeacherData();
             } catch (e) {
                 alert("Error resetting database.");
             }
-        }
-
-        function exportAllPDF() {
-            if(allSubmissions.length === 0) return alert("No submissions to export.");
-            alert("This feature requires custom server-side PDF generation for large datasets. For this demo, please view individual students and print their screens.");
         }
     </script>
 </body>
