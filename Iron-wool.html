@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Burning of Iron Wool - Learning Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <!-- Firebase SDK (Modular via CDN) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+
+        // =========================================================================
+        // FIREBASE CONFIGURATION
+        // =========================================================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyDyIHBTALb6wAHteYG5gDy1JfKkCqS0q-g",
+            authDomain: "iron-wool-simulation.firebaseapp.com",
+            projectId: "iron-wool-simulation",
+            storageBucket: "iron-wool-simulation.firebasestorage.app",
+            messagingSenderId: "430295150256",
+            appId: "1:430295150256:web:1964282cc0104a26035575"
+        };
+
+        // Initialize Firebase
+        let app, db;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            window.db = db; // Make db available globally for our functions
+            window.firebaseModules = { collection, addDoc, getDocs, deleteDoc, doc, serverTimestamp };
+            console.log("Firebase initialized successfully.");
+        } catch (e) {
+            console.error("Firebase initialization error:", e);
+        }
+    </script>
+
+    <style>
+        body {
+            touch-action: none;
+            background-color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .particle {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            position: absolute;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            z-index: 10;
+            transition: transform 0.1s;
+        }
+
+        .particle:active { cursor: grabbing; transform: scale(1.1); }
+        .particle-iron { background-color: #1a202c; border: 2px solid #1a202c; }
+        .particle-oxygen { background-color: #ffffff; border: 2px solid #1a202c; }
+        
+        .source-particle {
+            position: relative;
+            transform: none !important;
+            display: inline-block;
+            margin-left: 10px;
+            box-shadow: none;
+        }
+
+        .static-particle {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            position: absolute;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .scale-container {
+            position: relative;
+            width: 200px;
+            height: 100px;
+            margin: 0 auto;
+        }
+
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        input[type="radio"], input[type="checkbox"] {
+            accent-color: #2563eb;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body class="text-slate-800 pb-10">
+
+    <!-- ROLE SELECTION VIEW -->
+    <div id="view-role-selection" class="view-section active max-w-md mx-auto mt-20 p-8 bg-white rounded-xl shadow-md text-center">
+        <h1 class="text-3xl font-bold mb-8">Burning of Iron Wool</h1>
+        <p class="mb-6 text-slate-600">Please select your role to continue:</p>
+        <div class="flex flex-col gap-4">
+            <button onclick="switchView('view-student')" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition">I am a Student</button>
+            <button onclick="switchView('view-teacher-login')" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 px-4 rounded-lg transition">I am a Teacher</button>
+        </div>
+    </div>
+
+    <!-- TEACHER LOGIN VIEW -->
+    <div id="view-teacher-login" class="view-section max-w-md mx-auto mt-20 p-8 bg-white rounded-xl shadow-md text-center">
+        <h2 class="text-2xl font-bold mb-6">Teacher Login</h2>
+        <input type="password" id="teacher-password" placeholder="Enter Password" class="w-full border-2 border-slate-300 rounded-lg p-3 mb-4 focus:border-blue-500 outline-none">
+        <div class="flex gap-4">
+            <button onclick="switchView('view-role-selection')" class="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold py-2 px-4 rounded-lg transition">Back</button>
+            <button onclick="loginTeacher()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">Login</button>
+        </div>
+        <p id="login-error" class="text-red-500 mt-4 hidden">Incorrect password.</p>
+    </div>
+
+    <!-- STUDENT VIEW -->
+    <div id="view-student" class="view-section max-w-6xl mx-auto p-4 mt-4">
+        <div class="flex justify-between items-center mb-4">
+            <button onclick="switchView('view-role-selection')" class="text-blue-600 hover:underline">&larr; Back to Home</button>
+        </div>
+
+        <!-- Student Info Form -->
+        <div class="bg-white p-6 rounded-xl shadow-sm border-2 border-slate-200 mb-6 flex flex-wrap gap-4">
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-sm font-semibold mb-1">Name</label>
+                <input type="text" id="student-name" class="w-full border-2 border-slate-300 rounded p-2 outline-none focus:border-blue-500">
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-sm font-semibold mb-1">Class</label>
+                <input type="text" id="student-class" class="w-full border-2 border-slate-300 rounded p-2 outline-none focus:border-blue-500">
+            </div>
+            <div class="flex-1 min-w-[150px]">
+                <label class="block text-sm font-semibold mb-1">Class Number</label>
+                <input type="number" id="student-number" class="w-full border-2 border-slate-300 rounded p-2 outline-none focus:border-blue-500">
+            </div>
+        </div>
+
+        <!-- Simulation Area -->
+        <div id="export-area" class="relative border-2 border-slate-200 bg-white rounded-xl p-8 shadow-sm overflow-hidden">
+            <div class="flex justify-between items-start mb-16">
+                <h1 class="text-4xl font-bold tracking-tight">Burning of Iron wool</h1>
+                <div class="bg-slate-50 p-4 rounded-lg border border-slate-200 shadow-sm z-20 relative student-controls">
+                    <p class="text-sm text-slate-500 italic mb-2">Drag particles to the "After burning" space.</p>
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-lg font-medium mr-4">Particle of oxygen:</span>
+                        <div class="particle particle-oxygen source-particle" data-type="oxygen" onpointerdown="startDragSource(event)"></div>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-lg font-medium mr-4">Particle of Iron:</span>
+                        <div class="particle particle-iron source-particle" data-type="iron" onpointerdown="startDragSource(event)"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="absolute left-1/2 top-[250px] transform -translate-x-1/2 -translate-y-1/2 text-7xl font-bold text-slate-300">&#10145;</div>
+
+            <div class="flex justify-between items-end mt-32 px-10 mb-16">
+                <!-- Before Burning -->
+                <div class="flex flex-col items-center w-1/2 relative">
+                    <div class="absolute" style="top: -120px; left: 30%;">
+                        <div class="absolute" style="top: 0px; left: -40px; transform: rotate(15deg);">
+                            <div class="static-particle particle-oxygen" style="left: 0px;"></div>
+                            <div class="static-particle particle-oxygen" style="left: 20px;"></div>
+                        </div>
+                        <div class="absolute" style="top: 40px; left: 20px; transform: rotate(-20deg);">
+                            <div class="static-particle particle-oxygen" style="left: 0px;"></div>
+                            <div class="static-particle particle-oxygen" style="left: 20px;"></div>
+                        </div>
+                    </div>
+                    <div class="scale-container">
+                        <div class="absolute flex justify-center w-full" style="top: 6px; z-index: 6;">
+                            <div class="flex" style="gap: 1px;">
+                                <div class="static-particle particle-iron" style="position: relative;"></div>
+                                <div class="static-particle particle-iron" style="position: relative;"></div>
+                                <div class="static-particle particle-iron" style="position: relative;"></div>
+                                <div class="static-particle particle-iron" style="position: relative;"></div>
+                            </div>
+                        </div>
+                        <svg width="200" height="100" viewBox="0 0 200 100" class="absolute inset-0 z-0">
+                            <path d="M 10 20 Q 30 30 50 30 L 150 30 Q 170 30 190 20" fill="none" stroke="#0f172a" stroke-width="4"/>
+                            <rect x="65" y="30" width="8" height="20" fill="#0f172a" />
+                            <rect x="127" y="30" width="8" height="20" fill="#0f172a" />
+                            <path d="M 45 50 L 155 50 L 175 95 L 25 95 Z" fill="none" stroke="#0f172a" stroke-width="4"/>
+                            <path d="M 60 60 L 140 60 L 145 85 L 55 85 Z" fill="none" stroke="#0f172a" stroke-width="4"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-semibold mt-6">Before burning</h2>
+                </div>
+
+                <!-- After Burning -->
+                <div class="flex flex-col items-center w-1/2" id="after-burning-container">
+                    <div class="scale-container" id="apparatus-hitbox">
+                        <svg width="200" height="100" viewBox="0 0 200 100" class="absolute inset-0 z-0">
+                            <path d="M 10 20 Q 30 30 50 30 L 150 30 Q 170 30 190 20" fill="none" stroke="#0f172a" stroke-width="4"/>
+                            <rect x="65" y="30" width="8" height="20" fill="#0f172a" />
+                            <rect x="127" y="30" width="8" height="20" fill="#0f172a" />
+                            <path d="M 45 50 L 155 50 L 175 95 L 25 95 Z" fill="none" stroke="#0f172a" stroke-width="4"/>
+                            <path d="M 60 60 L 140 60 L 145 85 L 55 85 Z" fill="none" stroke="#0f172a" stroke-width="4"/>
+                        </svg>
+                    </div>
+                    <h2 class="text-xl font-semibold mt-6">After burning</h2>
+                </div>
+            </div>
+
+            <!-- Questionnaire -->
+            <div class="mt-12 pt-8 border-t-2 border-slate-200 z-20 relative bg-white">
+                <h3 class="text-2xl font-bold mb-6 text-slate-800">Questions</h3>
+                
+                <div class="mb-8">
+                    <p class="font-semibold text-lg mb-3">Q1: How does the mass of the iron change after burning?</p>
+                    <div class="flex gap-8 ml-2">
+                        <label class="flex items-center gap-2 text-lg"><input type="radio" name="q1" value="Increases" class="w-5 h-5"> Increases</label>
+                        <label class="flex items-center gap-2 text-lg"><input type="radio" name="q1" value="Decreases" class="w-5 h-5"> Decreases</label>
+                        <label class="flex items-center gap-2 text-lg"><input type="radio" name="q1" value="Remains the same" class="w-5 h-5"> Remains the same</label>
+                    </div>
+                </div>
+
+                <div class="mb-8">
+                    <p class="font-semibold text-lg mb-3">Q2: Which of the following best describes your reasoning? (You can choose more than one)</p>
+                    <div class="flex flex-col gap-3 ml-2">
+                        <label class="flex items-center gap-3 text-lg"><input type="checkbox" name="q2" value="Iron particles leave the balance." class="w-5 h-5"> Iron particles leave the balance.</label>
+                        <label class="flex items-center gap-3 text-lg"><input type="checkbox" name="q2" value="Oxygen particles stick to the iron particles." class="w-5 h-5"> Oxygen particles stick to the iron particles.</label>
+                        <label class="flex items-center gap-3 text-lg"><input type="checkbox" name="q2" value="New substances are formed during burning." class="w-5 h-5"> New substances are formed during burning.</label>
+                        <label class="flex items-center gap-3 text-lg"><input type="checkbox" name="q2" value="The total number of particles on the balance changes." class="w-5 h-5"> The total number of particles on the balance changes.</label>
+                        <label class="flex items-center gap-3 text-lg"><input type="checkbox" name="q2" value="The iron particles become larger." class="w-5 h-5"> The iron particles become larger.</label>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <p class="font-semibold text-lg mb-3">Q3: In your own words, explain why the mass of the iron changes after burning.</p>
+                    <textarea id="q3-answer" class="w-full border-2 border-slate-300 rounded-lg p-4 text-lg resize-none focus:border-blue-500 outline-none" rows="3"></textarea>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-6 flex justify-end student-controls">
+            <button onclick="submitStudentWork()" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow-lg text-lg transition">Submit Work</button>
+        </div>
+    </div>
+
+    <!-- TEACHER DASHBOARD -->
+    <div id="view-teacher-dashboard" class="view-section max-w-6xl mx-auto p-4 mt-10">
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold">Teacher Dashboard</h1>
+            <div class="flex gap-4">
+                <button onclick="exportAllPDF()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">Export All to PDF</button>
+                <button onclick="resetDatabase()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded shadow">Reset Database</button>
+                <button onclick="switchView('view-role-selection')" class="bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 px-4 rounded shadow">Logout</button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow overflow-hidden">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-100 border-b-2 border-slate-200">
+                        <th class="p-4 font-semibold">Class</th>
+                        <th class="p-4 font-semibold">No.</th>
+                        <th class="p-4 font-semibold">Name</th>
+                        <th class="p-4 font-semibold">Submission Time</th>
+                        <th class="p-4 font-semibold">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="student-list-body">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // --- View Management ---
+        function switchView(viewId) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+            document.getElementById(viewId).classList.add('active');
+            if(viewId === 'view-teacher-dashboard') loadTeacherData();
+        }
+
+        function loginTeacher() {
+            const pwd = document.getElementById('teacher-password').value;
+            if (pwd === '123456') {
+                document.getElementById('login-error').classList.add('hidden');
+                document.getElementById('teacher-password').value = '';
+                switchView('view-teacher-dashboard');
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        // --- Simulation Drag & Drop Logic with Physics ---
+        const exportArea = document.getElementById('export-area');
+        const apparatusHitbox = document.getElementById('apparatus-hitbox');
+        let activeParticle = null;
+        let offsetX = 0, offsetY = 0;
+        const PARTICLE_SIZE = 24, PARTICLE_RADIUS = 12;
+        let dynamicParticles = [];
+
+        function startDragSource(e) {
+            if(!e.target.closest('.student-controls')) return; 
+            e.preventDefault();
+            const type = e.target.getAttribute('data-type');
+            const newParticle = document.createElement('div');
+            newParticle.className = `particle ${type === 'iron' ? 'particle-iron' : 'particle-oxygen'} dynamic-particle`;
+            newParticle.dataset.type = type;
+            newParticle.style.pointerEvents = 'auto';
+            
+            newParticle.addEventListener('pointerdown', startDragExisting);
+            newParticle.addEventListener('dblclick', (ev) => {
+                // If bonded, remove both
+                if(ev.target.bondedTo) {
+                    const idx = dynamicParticles.indexOf(ev.target.bondedTo);
+                    if(idx > -1) dynamicParticles.splice(idx, 1);
+                    ev.target.bondedTo.remove();
+                }
+                const idx = dynamicParticles.indexOf(ev.target);
+                if(idx > -1) dynamicParticles.splice(idx, 1);
+                ev.target.remove();
+            });
+            
+            exportArea.appendChild(newParticle);
+            dynamicParticles.push(newParticle);
+
+            const rect = exportArea.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            newParticle.style.left = (clientX - rect.left - PARTICLE_RADIUS) + 'px';
+            newParticle.style.top = (clientY - rect.top - PARTICLE_RADIUS) + 'px';
+
+            activeParticle = newParticle;
+            offsetX = PARTICLE_RADIUS; offsetY = PARTICLE_RADIUS;
+            newParticle.setPointerCapture(e.pointerId);
+        }
+
+        function startDragExisting(e) {
+            e.preventDefault();
+            activeParticle = e.target;
+            const rect = activeParticle.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            offsetX = clientX - rect.left;
+            offsetY = clientY - rect.top;
+            activeParticle.setPointerCapture(e.pointerId);
+        }
+
+        window.addEventListener('pointermove', (e) => {
+            if (!activeParticle) return;
+            const rect = exportArea.getBoundingClientRect();
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            let newX = Math.max(0, Math.min(clientX - rect.left - offsetX, rect.width - PARTICLE_SIZE));
+            let newY = Math.max(0, Math.min(clientY - rect.top - offsetY, rect.height - PARTICLE_SIZE));
+
+            // Move the active particle
+            const oldX = parseFloat(activeParticle.style.left) || newX;
+            const oldY = parseFloat(activeParticle.style.top) || newY;
+            
+            activeParticle.style.left = newX + 'px';
+            activeParticle.style.top = newY + 'px';
+
+            // If it's bonded to another particle, move the bonded one by the same delta
+            if (activeParticle.bondedTo) {
+                const dx = newX - oldX;
+                const dy = newY - oldY;
+                const bX = parseFloat(activeParticle.bondedTo.style.left) || 0;
+                const bY = parseFloat(activeParticle.bondedTo.style.top) || 0;
+                activeParticle.bondedTo.style.left = (bX + dx) + 'px';
+                activeParticle.bondedTo.style.top = (bY + dy) + 'px';
+            }
+
+            resolveCollisions(activeParticle);
+        });
+
+        window.addEventListener('pointerup', (e) => {
+            if (activeParticle) {
+                activeParticle.releasePointerCapture(e.pointerId);
+                checkBonding(activeParticle);
+                activeParticle = null;
+            }
+        });
+
+        // --- Collision and Physics Functions ---
+        function resolveCollisions(particle) {
+            const rect = exportArea.getBoundingClientRect();
+            const appRect = apparatusHitbox.getBoundingClientRect();
+            
+            // Apparatus boundaries relative to exportArea
+            const appBox = {
+                left: appRect.left - rect.left - PARTICLE_SIZE,
+                right: appRect.right - rect.left,
+                top: appRect.top - rect.top - PARTICLE_SIZE,
+                bottom: appRect.bottom - rect.top
+            };
+
+            let px = parseFloat(particle.style.left);
+            let py = parseFloat(particle.style.top);
+
+            // 1. Prevent overlapping with the apparatus (simple bounding box push-out)
+            if (px > appBox.left && px < appBox.right && py > appBox.top && py < appBox.bottom) {
+                // Find nearest edge to push out
+                const distLeft = Math.abs(px - appBox.left);
+                const distRight = Math.abs(px - appBox.right);
+                const distTop = Math.abs(py - appBox.top);
+                const distBottom = Math.abs(py - appBox.bottom);
+                const min = Math.min(distLeft, distRight, distTop, distBottom);
+
+                if (min === distLeft) px = appBox.left;
+                else if (min === distRight) px = appBox.right;
+                else if (min === distTop) py = appBox.top;
+                else if (min === distBottom) py = appBox.bottom;
+                
+                particle.style.left = px + 'px';
+                particle.style.top = py + 'px';
+            }
+
+            // 2. Prevent overlapping with other particles
+            dynamicParticles.forEach(other => {
+                if (other === particle || other === particle.bondedTo) return;
+                
+                let ox = parseFloat(other.style.left);
+                let oy = parseFloat(other.style.top);
+                
+                let dx = px - ox;
+                let dy = py - oy;
+                let distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < PARTICLE_SIZE) {
+                    // Push the active particle away
+                    const overlap = PARTICLE_SIZE - distance + 1;
+                    const angle = Math.atan2(dy, dx);
+                    px += Math.cos(angle) * overlap;
+                    py += Math.sin(angle) * overlap;
+                    
+                    particle.style.left = px + 'px';
+                    particle.style.top = py + 'px';
+                }
+            });
+        }
+
+        function checkBonding(particle) {
+            if (particle.dataset.type !== 'oxygen' || particle.bondedTo) return;
+
+            let px = parseFloat(particle.style.left);
+            let py = parseFloat(particle.style.top);
+
+            for (let other of dynamicParticles) {
+                if (other === particle || other.dataset.type !== 'oxygen' || other.bondedTo) continue;
+
+                let ox = parseFloat(other.style.left);
+                let oy = parseFloat(other.style.top);
+                let distance = Math.sqrt((px - ox)**2 + (py - oy)**2);
+
+                // If close enough, snap and bond them together (O2 molecule)
+                if (distance < PARTICLE_SIZE * 1.5) {
+                    particle.bondedTo = other;
+                    other.bondedTo = particle;
+                    
+                    // Snap to be exactly touching horizontally
+                    other.style.left = (px + PARTICLE_SIZE - 2) + 'px';
+                    other.style.top = py + 'px';
+                    break;
+                }
+            }
+        }
+
+        // --- Database Logic (Firebase) ---
+        async function submitStudentWork() {
+            if (!window.db) return alert("Firebase is not initialized. Please check your config and connection.");
+            
+            const name = document.getElementById('student-name').value;
+            const sClass = document.getElementById('student-class').value;
+            const sNum = document.getElementById('student-number').value;
+            
+            if(!name || !sClass || !sNum) return alert("Please fill in your Name, Class, and Class Number.");
+
+            const q1 = document.querySelector('input[name="q1"]:checked')?.value || "";
+            const q2 = Array.from(document.querySelectorAll('input[name="q2"]:checked')).map(cb => cb.value);
+            const q3 = document.getElementById('q3-answer').value;
+
+            const particles = Array.from(document.querySelectorAll('.dynamic-particle')).map(p => ({
+                type: p.dataset.type,
+                x: p.style.left,
+                y: p.style.top
+            }));
+
+            const data = {
+                student: { name, class: sClass, number: sNum },
+                answers: { q1, q2, q3 },
+                particles,
+                timestamp: window.firebaseModules.serverTimestamp()
+            };
+
+            try {
+                const colRef = window.firebaseModules.collection(window.db, "submissions");
+                await window.firebaseModules.addDoc(colRef, data);
+                alert("Work submitted successfully!");
+                switchView('view-role-selection');
+                
+                // Clear form
+                document.getElementById('student-name').value = '';
+                document.getElementById('student-class').value = '';
+                document.getElementById('student-number').value = '';
+                document.getElementById('q3-answer').value = '';
+                document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(i => i.checked = false);
+                document.querySelectorAll('.dynamic-particle').forEach(p => p.remove());
+                dynamicParticles = [];
+            } catch (e) {
+                console.error(e);
+                alert("Error submitting work.");
+            }
+        }
+
+        let allSubmissions = [];
+
+        async function loadTeacherData() {
+            if (!window.db) return;
+            const tbody = document.getElementById('student-list-body');
+            tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center">Loading...</td></tr>';
+            
+            try {
+                const colRef = window.firebaseModules.collection(window.db, "submissions");
+                const snapshot = await window.firebaseModules.getDocs(colRef);
+                allSubmissions = [];
+                snapshot.forEach(doc => allSubmissions.push({ id: doc.id, ...doc.data() }));
+                
+                tbody.innerHTML = '';
+                if(allSubmissions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">No submissions yet.</td></tr>';
+                    return;
+                }
+
+                allSubmissions.forEach(sub => {
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-slate-100 hover:bg-slate-50";
+                    const dateStr = sub.timestamp ? new Date(sub.timestamp.toDate()).toLocaleString() : 'N/A';
+                    tr.innerHTML = `
+                        <td class="p-4">${sub.student.class}</td>
+                        <td class="p-4">${sub.student.number}</td>
+                        <td class="p-4">${sub.student.name}</td>
+                        <td class="p-4">${dateStr}</td>
+                        <td class="p-4">
+                            <button onclick="viewSubmission('${sub.id}')" class="text-blue-600 hover:underline">View Details</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-red-500">Error loading data.</td></tr>';
+            }
+        }
+
+        function viewSubmission(id) {
+            const sub = allSubmissions.find(s => s.id === id);
+            if(!sub) return;
+            
+            document.getElementById('student-name').value = sub.student.name;
+            document.getElementById('student-class').value = sub.student.class;
+            document.getElementById('student-number').value = sub.student.number;
+            
+            document.querySelectorAll('input[name="q1"]').forEach(r => r.checked = (r.value === sub.answers.q1));
+            document.querySelectorAll('input[name="q2"]').forEach(cb => cb.checked = sub.answers.q2.includes(cb.value));
+            document.getElementById('q3-answer').value = sub.answers.q3;
+
+            document.querySelectorAll('.dynamic-particle').forEach(p => p.remove());
+            dynamicParticles = [];
+            
+            sub.particles.forEach(pData => {
+                const p = document.createElement('div');
+                p.className = `particle ${pData.type === 'iron' ? 'particle-iron' : 'particle-oxygen'} dynamic-particle`;
+                p.style.left = pData.x;
+                p.style.top = pData.y;
+                p.style.pointerEvents = 'none'; // Read only
+                exportArea.appendChild(p);
+            });
+
+            document.querySelectorAll('.student-controls').forEach(el => el.style.display = 'none');
+            switchView('view-student');
+            
+            const backBtn = document.createElement('button');
+            backBtn.id = "teacher-back-btn";
+            backBtn.className = "bg-slate-800 text-white px-4 py-2 rounded mt-4";
+            backBtn.innerText = "Back to Dashboard";
+            backBtn.onclick = () => {
+                document.querySelectorAll('.student-controls').forEach(el => el.style.display = '');
+                document.querySelectorAll('.dynamic-particle').forEach(p => p.remove());
+                backBtn.remove();
+                switchView('view-teacher-dashboard');
+            };
+            exportArea.parentElement.appendChild(backBtn);
+        }
+
+        async function resetDatabase() {
+            if(!confirm("Are you sure you want to delete ALL submissions? This cannot be undone.")) return;
+            try {
+                for (const sub of allSubmissions) {
+                    await window.firebaseModules.deleteDoc(window.firebaseModules.doc(window.db, "submissions", sub.id));
+                }
+                alert("Database reset successful.");
+                loadTeacherData();
+            } catch (e) {
+                alert("Error resetting database.");
+            }
+        }
+
+        function exportAllPDF() {
+            if(allSubmissions.length === 0) return alert("No submissions to export.");
+            alert("This feature requires custom server-side PDF generation for large datasets. For this demo, please view individual students and print their screens.");
+        }
+    </script>
+</body>
+</html>
