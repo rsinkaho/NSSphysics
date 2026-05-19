@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Radiation Physics: Range & Ionization</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #f8fafc;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: manipulation;
+            overflow-x: hidden;
+        }
+        canvas {
+            background: radial-gradient(circle at center, #1e293b 0%, #020617 100%);
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        
+        input[type=range] {
+            height: 28px;
+            -webkit-appearance: none;
+            margin: 8px 0;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 4px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 26px;
+            width: 26px;
+            border-radius: 50%;
+            background: currentColor;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -9px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6 flex flex-col items-center">
+
+    <header class="text-center mb-4 w-full max-w-6xl">
+        <h1 class="text-2xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400 mb-2">
+            Radiation Range & Bragg Peak
+        </h1>
+        <p class="text-slate-400 text-sm md:text-base px-2">
+            Chamber width = <span class="text-slate-200 font-bold">1 m (100 cm)</span>. Particles will stop if they reach the end of the chamber. Ranges will vary slightly per run due to experimental uncertainty.
+        </p>
+    </header>
+
+    <main class="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+        
+        <!-- Controls Panel -->
+        <div class="glass-panel p-5 rounded-xl flex flex-col gap-4 h-fit">
+            <h2 class="text-lg font-semibold border-b border-slate-700 pb-2 text-slate-200">Particle Properties</h2>
+            
+            <div class="flex flex-col gap-1">
+                <label class="flex justify-between text-sm font-medium text-slate-300">
+                    <span>Mass (u)</span>
+                    <span id="massValue" class="text-blue-400 font-bold">4 (Alpha)</span>
+                </label>
+                <input type="range" id="massSlider" min="1" max="4" step="1" value="4" class="text-blue-500">
+            </div>
+
+            <div class="flex flex-col gap-1">
+                <label class="flex justify-between text-sm font-medium text-slate-300">
+                    <span>Charge (e)</span>
+                    <span id="chargeValue" class="text-amber-400 font-bold">2</span>
+                </label>
+                <input type="range" id="chargeSlider" min="0" max="2" step="1" value="2" class="text-amber-500">
+            </div>
+
+            <div class="mt-2 flex flex-col gap-3">
+                <button id="shootBtn" class="w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-lg transition-all shadow-lg shadow-blue-900/50 active:scale-95 text-lg border border-blue-500/30">
+                    Fire Particle
+                </button>
+                <div class="flex gap-2">
+                    <button id="recordBtn" disabled class="flex-1 py-2 bg-emerald-900/50 text-emerald-400 font-semibold rounded-lg transition-all hover:bg-emerald-800/50 disabled:opacity-50 disabled:cursor-not-allowed border border-emerald-700/50">
+                        Record Data
+                    </button>
+                    <button id="clearBtn" class="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg transition-all border border-slate-600">
+                        Reset Chamber
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-3 bg-slate-900/50 rounded-lg border border-slate-700 shadow-inner">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Live Telemetry</h3>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-slate-400">Kinetic Energy:</span>
+                    <span id="statEnergy" class="font-mono text-amber-400 font-semibold">100 %</span>
+                </div>
+                <div class="flex justify-between text-sm mb-1">
+                    <span class="text-slate-400">Range Reached:</span>
+                    <span id="statRange" class="font-mono text-emerald-400 font-semibold">0.0 cm</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-slate-400">Total Ionizations:</span>
+                    <span id="statIonized" class="font-mono text-pink-400 font-semibold">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Simulation Canvas & Data -->
+        <div class="lg:col-span-2 flex flex-col gap-4">
+            <div class="relative w-full h-64 md:h-80 lg:h-96 bg-slate-900 rounded-xl overflow-hidden shadow-sm">
+                <canvas id="simCanvas"></canvas>
+                <div class="absolute top-2 left-2 text-[10px] md:text-xs text-slate-300 bg-slate-900/80 px-2 py-1 rounded border border-slate-700 pointer-events-none shadow-sm">Source (0 cm)</div>
+                <div class="absolute bottom-2 right-2 text-[10px] md:text-xs text-slate-300 bg-slate-900/80 px-2 py-1 rounded border border-slate-700 pointer-events-none shadow-sm">End of Chamber (1 m)</div>
+            </div>
+
+            <div class="glass-panel rounded-xl overflow-hidden flex flex-col h-48 md:h-56">
+                <div class="p-3 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
+                    <h2 class="text-base font-semibold text-slate-200">Experimental Data</h2>
+                    <button id="clearDataBtn" class="text-xs px-3 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded border border-red-800/50 transition-colors">
+                        Clear Table
+                    </button>
+                </div>
+                <div class="overflow-y-auto flex-1 p-0 bg-slate-900/50">
+                    <table class="w-full text-left text-xs md:text-sm">
+                        <thead class="bg-slate-800 sticky top-0 z-10 shadow-sm">
+                            <tr>
+                                <th class="px-3 md:px-4 py-2 text-slate-300 font-semibold">Run</th>
+                                <th class="px-3 md:px-4 py-2 text-blue-400 font-semibold">Particle</th>
+                                <th class="px-3 md:px-4 py-2 text-emerald-400 font-semibold">Final Range</th>
+                                <th class="px-3 md:px-4 py-2 text-pink-400 font-semibold">Ionizations</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody" class="divide-y divide-slate-800">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const massSlider = document.getElementById('massSlider');
+        const chargeSlider = document.getElementById('chargeSlider');
+        const massValue = document.getElementById('massValue');
+        const chargeValue = document.getElementById('chargeValue');
+        
+        const shootBtn = document.getElementById('shootBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const clearDataBtn = document.getElementById('clearDataBtn');
+        
+        const statEnergy = document.getElementById('statEnergy');
+        const statRange = document.getElementById('statRange');
+        const statIonized = document.getElementById('statIonized');
+        const dataTableBody = document.getElementById('dataTableBody');
+        
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Chamber is 100 cm (1 meter)
+        const CHAMBER_LENGTH_CM = 100.0;
+        const BASE_INITIAL_ENERGY = 1000.0; 
+        const MOLECULE_COUNT = 600; 
+        const STOPPING_POWER_CONSTANT = 6250; 
+
+        let width, height, pixelsPerCm;
+        let molecules = [];
+        let freeElectrons = [];
+        let particles = []; 
+        
+        let runCount = 0;
+        let lastRunData = null;
+        let animationId;
+
+        function getParticleName(m, c) {
+            if (m === 1 && c === 1) return "Proton (p)";
+            if (m === 1 && c === 0) return "Neutron (n)";
+            if (m === 2 && c === 1) return "Deuteron (d)";
+            if (m === 3 && c === 1) return "Triton (t)";
+            if (m === 3 && c === 2) return "Helium-3";
+            if (m === 4 && c === 2) return "Alpha (α)";
+            return `Ion (m:${m}, q:${c})`;
+        }
+
+        function updateLabels() {
+            let m = parseInt(massSlider.value);
+            let c = parseInt(chargeSlider.value);
+            
+            let nameExt = "";
+            if (m === 1 && c === 1) nameExt = " (Proton)";
+            else if (m === 1 && c === 0) nameExt = " (Neutron)";
+            else if (m === 4 && c === 2) nameExt = " (Alpha)";
+            
+            massValue.textContent = m + nameExt;
+            chargeValue.textContent = c;
+        }
+
+        massSlider.addEventListener('input', updateLabels);
+        chargeSlider.addEventListener('input', updateLabels);
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            width = canvas.width;
+            height = canvas.height;
+            pixelsPerCm = width / CHAMBER_LENGTH_CM;
+            
+            if (particles.length === 0) {
+                initChamber();
+            }
+        }
+
+        function initChamber() {
+            molecules = [];
+            freeElectrons = [];
+            particles = [];
+            for (let i = 0; i < MOLECULE_COUNT; i++) {
+                const x = Math.random() * width;
+                const y = Math.random() * height;
+                const angle = Math.random() * Math.PI;
+                const size = 3.5;
+                
+                const dx = Math.cos(angle) * size;
+                const dy = Math.sin(angle) * size;
+                
+                molecules.push({
+                    ionized: false,
+                    atom1: { x: x - dx, y: y - dy, vx: 0, vy: 0 },
+                    atom2: { x: x + dx, y: y + dy, vx: 0, vy: 0 },
+                    angle: angle
+                });
+            }
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 100));
+
+        shootBtn.addEventListener('click', () => {
+            if (particles.some(p => p.active)) return; 
+            
+            const mass = parseInt(massSlider.value);
+            const charge = parseInt(chargeSlider.value);
+            
+            // Introduce experimental variance (±3% to initial energy)
+            const variance = 0.97 + (Math.random() * 0.06);
+            const startingEnergy = BASE_INITIAL_ENERGY * variance;
+            
+            const newParticle = {
+                x: 0,
+                startY: height / 2 + (Math.random() * 40 - 20),
+                y: 0,
+                mass: mass,
+                charge: charge,
+                initialEnergy: startingEnergy,
+                energy: startingEnergy,
+                ionizedCount: 0,
+                pendingIonizations: 0,
+                active: true
+            };
+            newParticle.y = newParticle.startY;
+            
+            particles.push(newParticle);
+
+            recordBtn.disabled = true;
+            shootBtn.disabled = true;
+            shootBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+
+        clearBtn.addEventListener('click', () => {
+            initChamber();
+            recordBtn.disabled = true;
+            shootBtn.disabled = false;
+            shootBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            statEnergy.textContent = "100 %";
+            statRange.textContent = "0.0 cm";
+            statIonized.textContent = "0";
+        });
+
+        recordBtn.addEventListener('click', () => {
+            if (lastRunData) {
+                runCount++;
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/50 transition-colors";
+                tr.innerHTML = `
+                    <td class="px-3 md:px-4 py-2 border-t border-slate-700 text-slate-300">${runCount}</td>
+                    <td class="px-3 md:px-4 py-2 border-t border-slate-700 text-blue-400 font-mono">${getParticleName(lastRunData.mass, lastRunData.charge)}</td>
+                    <td class="px-3 md:px-4 py-2 border-t border-slate-700 text-emerald-400 font-mono font-semibold">${lastRunData.range}</td>
+                    <td class="px-3 md:px-4 py-2 border-t border-slate-700 text-pink-400 font-mono">${lastRunData.ionized}</td>
+                `;
+                dataTableBody.insertBefore(tr, dataTableBody.firstChild);
+                recordBtn.disabled = true;
+            }
+        });
+
+        clearDataBtn.addEventListener('click', () => {
+            dataTableBody.innerHTML = '';
+            runCount = 0;
+        });
+
+        function drawChamber() {
+            for (let i = 0; i < molecules.length; i++) {
+                const m = molecules[i];
+                if (m.ionized) {
+                    m.atom1.x += m.atom1.vx; m.atom1.y += m.atom1.vy;
+                    m.atom2.x += m.atom2.vx; m.atom2.y += m.atom2.vy;
+                    
+                    m.atom1.vx *= 0.95; m.atom1.vy *= 0.95;
+                    m.atom2.vx *= 0.95; m.atom2.vy *= 0.95;
+
+                    ctx.lineWidth = 1.5;
+                    
+                    // Atom 1: Positive Ion (Pink with + sign)
+                    ctx.fillStyle = 'rgba(236, 72, 153, 0.3)';
+                    ctx.strokeStyle = '#f472b6';
+                    ctx.beginPath();
+                    ctx.arc(m.atom1.x, m.atom1.y, 4, 0, Math.PI * 2);
+                    ctx.fill(); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(m.atom1.x - 2, m.atom1.y); ctx.lineTo(m.atom1.x + 2, m.atom1.y);
+                    ctx.moveTo(m.atom1.x, m.atom1.y - 2); ctx.lineTo(m.atom1.x, m.atom1.y + 2);
+                    ctx.strokeStyle = '#fbcfe8';
+                    ctx.stroke();
+
+                    // Atom 2: Negative Ion (Cyan with - sign)
+                    ctx.fillStyle = 'rgba(6, 182, 212, 0.3)';
+                    ctx.strokeStyle = '#22d3ee';
+                    ctx.beginPath();
+                    ctx.arc(m.atom2.x, m.atom2.y, 4, 0, Math.PI * 2);
+                    ctx.fill(); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(m.atom2.x - 2, m.atom2.y); ctx.lineTo(m.atom2.x + 2, m.atom2.y);
+                    ctx.strokeStyle = '#cffafe';
+                    ctx.stroke();
+
+                } else {
+                    ctx.fillStyle = 'rgba(148, 163, 184, 0.3)';
+                    ctx.beginPath();
+                    ctx.arc(m.atom1.x, m.atom1.y, 3.5, 0, Math.PI * 2);
+                    ctx.arc(m.atom2.x, m.atom2.y, 3.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            for (let i = freeElectrons.length - 1; i >= 0; i--) {
+                const e = freeElectrons[i];
+                ctx.beginPath();
+                ctx.arc(e.x, e.y, 1.5, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(250, 204, 21, ${e.life})`;
+                ctx.fill();
+                
+                e.x += e.vx;
+                e.y += e.vy;
+                e.life -= 0.02;
+                if (e.life <= 0) freeElectrons.splice(i, 1);
+            }
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            drawChamber();
+
+            let activeParticle = particles.find(p => p.active);
+
+            if (activeParticle) {
+                let speedPx = 0;
+                let dE = 0;
+                let dx_cm = 0;
+
+                let physicsMass = activeParticle.mass;
+
+                if (activeParticle.charge === 0) {
+                    // Neutral particles (like neutrons) interact very rarely but travel far
+                    speedPx = 15; 
+                    dx_cm = speedPx / pixelsPerCm;
+                    if (Math.random() < 0.002 * dx_cm) {
+                        dE = 200; 
+                        activeParticle.pendingIonizations += 1;
+                    }
+                } else {
+                    speedPx = Math.min(12, Math.max(1.5, Math.sqrt(activeParticle.energy / physicsMass) * 0.15));
+                    dx_cm = speedPx / pixelsPerCm;
+                    
+                    let energyFactor = Math.max(activeParticle.energy, 5); 
+                    dE = STOPPING_POWER_CONSTANT * ((activeParticle.charge ** 2 * physicsMass) / energyFactor) * dx_cm;
+                    
+                    activeParticle.pendingIonizations += dE / 15;
+                }
+
+                activeParticle.x += speedPx;
+                activeParticle.energy -= dE;
+
+                // Stop the particle if it reaches the end of the chamber
+                if (activeParticle.x >= width) {
+                    activeParticle.x = width;
+                    activeParticle.energy = 0;
+                }
+                
+                while (activeParticle.pendingIonizations >= 1 || Math.random() < activeParticle.pendingIonizations) {
+                    activeParticle.pendingIonizations = Math.max(0, activeParticle.pendingIonizations - 1);
+                    
+                    if (activeParticle.x <= width) {
+                        let target = null;
+                        let minDist = 40; 
+                        
+                        for (let i = 0; i < molecules.length; i++) {
+                            const m = molecules[i];
+                            if (!m.ionized) {
+                                const mx = (m.atom1.x + m.atom2.x) / 2;
+                                const my = (m.atom1.y + m.atom2.y) / 2;
+                                const dist = Math.hypot(mx - activeParticle.x, my - activeParticle.y);
+                                if (dist < minDist) {
+                                    minDist = dist;
+                                    target = m;
+                                }
+                            }
+                        }
+
+                        if (target) {
+                            target.ionized = true;
+                            activeParticle.ionizedCount++;
+                            
+                            const splitSpeed = 0.8 + Math.random() * 0.5;
+                            target.atom1.vx = -Math.cos(target.angle) * splitSpeed + (Math.random()-0.5)*0.5;
+                            target.atom1.vy = -Math.sin(target.angle) * splitSpeed + (Math.random()-0.5)*0.5;
+                            target.atom2.vx = Math.cos(target.angle) * splitSpeed + (Math.random()-0.5)*0.5;
+                            target.atom2.vy = Math.sin(target.angle) * splitSpeed + (Math.random()-0.5)*0.5;
+
+                            freeElectrons.push({
+                                x: (target.atom1.x + target.atom2.x)/2, 
+                                y: (target.atom1.y + target.atom2.y)/2,
+                                vx: (Math.random() - 0.5) * 6,
+                                vy: (Math.random() - 0.5) * 6,
+                                life: 1.0
+                            });
+                        }
+                    }
+                }
+
+                const currentRangeCm = activeParticle.x / pixelsPerCm;
+                const energyPct = Math.max(0, (activeParticle.energy / activeParticle.initialEnergy) * 100);
+                
+                let displayRange = currentRangeCm >= 100 ? "> 100 cm" : currentRangeCm.toFixed(1) + " cm";
+
+                statEnergy.textContent = energyPct.toFixed(1) + " %";
+                statRange.textContent = displayRange;
+                statIonized.textContent = activeParticle.ionizedCount;
+
+                if (activeParticle.energy <= 0) {
+                    activeParticle.active = false;
+                    
+                    shootBtn.disabled = false;
+                    shootBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    recordBtn.disabled = false;
+                    
+                    lastRunData = {
+                        mass: activeParticle.mass,
+                        charge: activeParticle.charge,
+                        range: displayRange,
+                        ionized: activeParticle.ionizedCount
+                    };
+                    
+                    statEnergy.textContent = "0.0 %";
+                }
+            }
+
+            for (let p of particles) {
+                if (p.x > 0) {
+                    // Draw Trail
+                    ctx.beginPath();
+                    ctx.moveTo(0, p.startY);
+                    ctx.lineTo(p.x, p.y);
+                    
+                    let trailColor = 'rgba(255, 255, 255, 0.2)';
+                    if (p.charge === 2) trailColor = 'rgba(251, 191, 36, 0.4)'; // Amber for Alpha
+                    else if (p.charge === 1) trailColor = 'rgba(96, 165, 250, 0.4)'; // Blue for Proton
+                    
+                    ctx.strokeStyle = trailColor;
+                    ctx.lineWidth = Math.max(2, p.mass + 1);
+                    ctx.stroke();
+
+                    // Draw Particle Body
+                    ctx.beginPath();
+                    const particleSize = Math.max(3, p.mass * 1.5 + 2);
+                    ctx.arc(p.x, p.y, particleSize, 0, Math.PI * 2);
+                    
+                    if (p.charge === 2) ctx.fillStyle = '#fbbf24';
+                    else if (p.charge === 1) ctx.fillStyle = '#60a5fa';
+                    else ctx.fillStyle = '#cbd5e1';
+
+                    ctx.fill();
+                }
+            }
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        updateLabels();
+        setTimeout(() => {
+            resizeCanvas();
+            animationId = requestAnimationFrame(animate);
+        }, 100);
+
+    </script>
+</body>
+</html>
